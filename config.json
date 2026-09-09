@@ -1,0 +1,20 @@
+{
+  "schema_version": "event-hub.config.v1",
+  "sources": {
+    "sensor-demo": {"enabled": true, "transport": "mqtt", "event_types": ["temperature.reading"]},
+    "app-demo": {"enabled": true, "transport": "http", "event_types": ["temperature.reading"]}
+  },
+  "rules": [
+    {
+      "id": "high-temperature",
+      "enabled": true,
+      "event_type": "temperature.reading",
+      "unit": "celsius",
+      "operator": "gt",
+      "threshold": 35,
+      "cooldown_seconds": 600,
+      "max_age_seconds": 86400,
+      "action": "internal_notification"
+    }
+  ]
+}

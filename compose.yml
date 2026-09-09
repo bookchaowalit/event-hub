@@ -1,0 +1,46 @@
+name: se-event-hub
+services:
+  hub:
+    build:
+      context: ..
+      dockerfile: event-hub/Dockerfile
+    image: solo-empire-event-hub:local
+    container_name: se-event-hub
+    user: "${EVENT_HUB_UID:-1000}:${EVENT_HUB_GID:-1000}"
+    restart: unless-stopped
+    depends_on:
+      - mqtt
+    ports:
+      - "127.0.0.1:8112:8112"
+    volumes:
+      - ./.runtime:/app/infra/event-hub/.runtime
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    mem_limit: 512m
+    cpus: 0.5
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8112/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+  mqtt:
+    image: eclipse-mosquitto:2.0.18
+    container_name: se-event-hub-mqtt
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/bootstrap/start-mqtt.sh"]
+    ports:
+      - "${EVENT_HUB_MQTT_BIND:-127.0.0.1}:${EVENT_HUB_MQTT_PORT:-1884}:1883"
+    volumes:
+      - ./start-mqtt.sh:/bootstrap/start-mqtt.sh:ro
+      - ./mosquitto.conf:/bootstrap/mosquitto.conf:ro
+      - ./.runtime/auth/acl:/bootstrap/acl:ro
+      - ./.runtime/auth/passwords:/bootstrap/passwords:ro
+      - mqtt-data:/mosquitto/data
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 64m
+    cpus: 0.25
+volumes:
+  mqtt-data:

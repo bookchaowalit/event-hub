@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="th"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ศูนย์เชื่อมต่อ · Solo Empire</title>
+<style>
+body{font:16px system-ui,sans-serif;max-width:1050px;margin:40px auto;padding:0 24px;color:#20352d;background:#f6f8f5}h1{font-size:30px;margin-bottom:6px}h2{font-size:20px}p{line-height:1.7}section{background:white;border:1px solid #d5ddd5;border-radius:12px;padding:22px;margin:20px 0}input,button{font:inherit;padding:8px;border:1px solid #a3b5aa;border-radius:5px}button{cursor:pointer;background:#e1eee5}table{border-collapse:collapse;width:100%;font-size:14px}td,th{text-align:left;padding:10px;border-bottom:1px solid #e4e9e4}input[type=number]{width:90px}.scroll{overflow:auto}.muted{color:#52685b}#message{min-height:24px}#login input{max-width:100%;width:330px}label{display:inline-block;margin:4px 8px 4px 0}
+</style>
+<h1>ศูนย์เชื่อมต่อ</h1><p class="muted">รับข้อมูลจากอุปกรณ์และแอป ตั้งเงื่อนไข และดูผลการทำงาน</p>
+<section id="login"><h2>เข้าสู่ระบบในเครื่อง</h2><p>ใช้รหัสผู้ดูแลที่เก็บไว้ในไฟล์ส่วนตัวของ pilot</p><form id="loginForm"><label>รหัสผู้ดูแล <input id="token" type="password" required autocomplete="off"></label><button>เข้าสู่ระบบ</button></form></section>
+<p id="message" role="status"></p>
+<main id="app" hidden>
+<p id="health"></p><button id="refresh">อัปเดตข้อมูล</button> <button id="retry">ลองงานที่ล้มเหลวอีกครั้ง</button>
+<section><h2>แหล่งข้อมูล</h2><div id="sources"></div></section>
+<section><h2>กฎแจ้งเตือน</h2><p class="muted">แจ้งเตือนภายในระบบเมื่อค่าตรงเงื่อนไข โดยเว้นช่วงก่อนแจ้งซ้ำ</p><div id="rules"></div><button id="save">บันทึกแหล่งข้อมูลและกฎ</button></section>
+<section><h2>การแจ้งเตือน</h2><div id="notices" class="scroll"></div></section>
+<section><h2>เหตุการณ์ล่าสุด</h2><div id="events" class="scroll"></div></section>
+<section><h2>ข้อมูลที่ไม่ผ่านการตรวจสอบ</h2><div id="rejections" class="scroll"></div></section>
+</main>
+<script>
+let state;
+const byId=id=>document.getElementById(id);
+const message=text=>byId('message').textContent=text;
+async function request(path,options={}){const res=await fetch(path,options);const obj=await res.json();if(!res.ok)throw Error(obj.code||'request_failed');return obj;}
+function table(target,columns,items){const root=byId(target);root.replaceChildren();if(!items.length){root.textContent='ยังไม่มีรายการ';return;}const table=document.createElement('table');const header=table.createTHead().insertRow();columns.forEach(([key,label])=>{const th=document.createElement('th');th.textContent=label;header.append(th)});const body=table.createTBody();items.forEach(item=>{const row=body.insertRow();columns.forEach(([key])=>row.insertCell().textContent=item[key]??'—')});root.append(table);}
+async function refresh(){state=await request('/api/status');byId('login').hidden=true;byId('app').hidden=false;byId('health').textContent=`MQTT: ${state.mqtt_connected?'เชื่อมต่อแล้ว':'กำลังเชื่อมต่อ'} · สำเร็จ ${state.counts.complete||0} · ล้มเหลว ${state.counts.failed||0}`;
+byId('sources').replaceChildren();Object.entries(state.sources).forEach(([key,s])=>{const label=document.createElement('label');const input=document.createElement('input');input.type='checkbox';input.checked=s.enabled;input.onchange=()=>s.enabled=input.checked;label.append(input,document.createTextNode(` ${key} (${s.transport}) `));byId('sources').append(label)});
+byId('rules').replaceChildren();state.rules.forEach(rule=>{const p=document.createElement('p');const check=document.createElement('input');check.type='checkbox';check.checked=rule.enabled;check.onchange=()=>rule.enabled=check.checked;const label=document.createElement('label');label.append(check,document.createTextNode(' '+rule.id));p.append(label);[['threshold','ค่าเปรียบเทียบ'],['cooldown_seconds','เว้นช่วง (วินาที)']].forEach(([key,title])=>{const l=document.createElement('label');l.textContent=title+' ';const n=document.createElement('input');n.type='number';n.step=key==='threshold'?'any':'1';n.value=rule[key];n.onchange=()=>rule[key]=Number(n.value);l.append(n);p.append(l)});byId('rules').append(p)});
+table('notices',[['source','แหล่งข้อมูล'],['rule_id','กฎ'],['message','ข้อความ'],['created_at','เวลา']],state.notifications);
+table('events',[['source','แหล่งข้อมูล'],['value','ค่า'],['unit','หน่วย'],['event_id','เหตุการณ์'],['status','สถานะ'],['error_code','ข้อผิดพลาด'],['received_at','เวลารับ']],state.events);
+table('rejections',[['code','สาเหตุ'],['count','จำนวน']],state.rejections);}
+byId('loginForm').onsubmit=async e=>{e.preventDefault();try{await request('/session',{method:'POST',headers:{Authorization:'Bearer '+byId('token').value}});byId('token').value='';await refresh();message('เข้าสู่ระบบแล้ว')}catch(e){message('เข้าสู่ระบบไม่สำเร็จ: '+e.message)}};
+byId('refresh').onclick=()=>refresh().catch(e=>message(e.message));
+byId('retry').onclick=async()=>{try{await request('/api/retry',{method:'POST'});await refresh();message('ตรวจงานที่รอทำใหม่แล้ว')}catch(e){message(e.message)}};
+byId('save').onclick=async()=>{try{await request('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({schema_version:'event-hub.config.v1',sources:state.sources,rules:state.rules})});await refresh();message('บันทึกแล้ว')}catch(e){message('บันทึกไม่สำเร็จ: '+e.message)}};
+refresh().catch(()=>{});
+</script></html>

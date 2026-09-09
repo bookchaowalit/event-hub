@@ -1,0 +1,9 @@
+# Reference ACL for the local event-hub pilot.
+# `task event-hub -- setup` renders the active ACL to `.runtime/auth/acl`;
+# Compose mounts that runtime file so onboarded sources receive only their
+# own publish topic. This file is not mounted by compose.
+user sensor-demo
+topic write se/events/sensor-demo
+
+user event-hub
+topic read se/events/+
