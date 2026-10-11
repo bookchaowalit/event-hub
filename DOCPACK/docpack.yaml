@@ -1,0 +1,8 @@
+system_id: bookchaowalit/private/solo-event-hub
+prefix: CARD
+brand: "EVENT HUB"
+subtitle: "Event Hub pilot: รับเหตุการณ์ผ่าน MQTT + HTTP แบบ lake-first กันซ้ำ และ data-intake-cli"
+footer: "solo-event-hub — Product Card"
+color: "#3a0ca3"
+audience: internal
+tier: L0
