@@ -8,7 +8,6 @@
 !scripts/data_lake/*.py
 !scripts/utils/
 !scripts/utils/_env.py
-!scripts/utils/db_connect.py
 !scripts/cli/
 !scripts/cli/data-intake-cli.py
 !scripts/services/
