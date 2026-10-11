@@ -16,10 +16,13 @@ Repo นี้คงโครงสร้างแบบ `infra/` เดิม�
 
 ## ทดสอบ
 
+ติดตั้ง dependency (pyarrow จำเป็น: event hub อ่าน/เขียน Parquet bronze; paho-mqtt ใช้เฉพาะ transport จริง):
+
 ```bash
-python3 infra/tests/integrations/event_hub_test.py
-python3 infra/tests/integrations/data_intake_test.py   # passes
+uv venv && uv pip install -r requirements.txt
+.venv/bin/python infra/tests/integrations/event_hub_test.py    # 21 tests
+.venv/bin/python infra/tests/integrations/data_intake_test.py
 ```
 
-หมายเหตุ: ณ วันที่ย้าย การทดสอบนี้มี 7 failures + 8 errors เหมือนกันทั้งใน solo-empire ก่อนย้าย (ต้นเหตุยังไม่ได้แก้ในงานย้าย) — ตรวจสอบ dependency ของ lake (pyarrow/duckdb) ก่อน.
+ถ้าไม่มี pyarrow การทดสอบจะล้ม (7 failures + 8 errors, `ModuleNotFoundError: pyarrow` และ `KeyError: 'notifications'` ซึ่งเป็นผลต่อเนื่องเมื่อ ingest ล้ม) — ต้นเหตุคือ dependency ไม่ได้ประกาศ ไม่ใช่ตรรกะโค้ด.
 Live test ต้องรัน `infra/event-hub/compose.yml` เท่านั้น.

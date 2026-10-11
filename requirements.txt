@@ -1,0 +1,2 @@
+# Test/dev dependencies (the container image uses infra/event-hub/requirements.txt)
+-r infra/event-hub/requirements.txt
