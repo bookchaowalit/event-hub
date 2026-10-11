@@ -10,7 +10,7 @@ Repo นี้คงโครงสร้างแบบ `infra/` เดิม�
 
 - `infra/event-hub/` — Dockerfile, compose.yml, mosquitto, config.json, README ของ pilot
 - `infra/scripts/services/event_hub*.py`, `infra/scripts/cli/data-intake-cli.py`
-- `infra/scripts/utils/{_env,cell_store,task_store,recurring_step,secret_resolver}.py` และ `infra/scripts/data_lake/{ingest,storage,parquet,iceberg}.py` — สำเนา vendored จาก solo-empire (ต้นฉบับ data lake อยู่ใน solo-data-lake)
+- `infra/scripts/utils/{_env,cell_store,task_store,recurring_step,secret_resolver,crm_ledger,decision_store,habits_store,notifications_store}.py` และ `infra/scripts/data_lake/{ingest,storage,parquet,iceberg}.py` — สำเนา vendored จาก solo-empire (ต้นฉบับ data lake อยู่ใน solo-data-lake)
 - `infra/database/migrations/033_source_registry_intake_queue.sql` — สำเนา migration ของ source registry/intake queue
 - `infra/tests/` — event_hub_test.py, event_hub_live_test.py, sqlite_cell_store double
 
@@ -18,6 +18,7 @@ Repo นี้คงโครงสร้างแบบ `infra/` เดิม�
 
 ```bash
 python3 infra/tests/integrations/event_hub_test.py
+python3 infra/tests/integrations/data_intake_test.py   # passes
 ```
 
 หมายเหตุ: ณ วันที่ย้าย การทดสอบนี้มี 7 failures + 8 errors เหมือนกันทั้งใน solo-empire ก่อนย้าย (ต้นเหตุยังไม่ได้แก้ในงานย้าย) — ตรวจสอบ dependency ของ lake (pyarrow/duckdb) ก่อน.
