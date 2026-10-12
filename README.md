@@ -1,4 +1,4 @@
-# solo-event-hub
+# event-hub
 
 Event Hub pilot (MQTT + HTTP ingestion, lake-first, action deduplication) พร้อม `data-intake-cli` ที่ใช้ส่ง intake.
 
@@ -10,7 +10,7 @@ Repo นี้คงโครงสร้างแบบ `infra/` เดิม�
 
 - `infra/event-hub/` — Dockerfile, compose.yml, mosquitto, config.json, README ของ pilot
 - `infra/scripts/services/event_hub*.py`, `infra/scripts/cli/data-intake-cli.py`
-- `infra/scripts/utils/{_env,cell_store,task_store,recurring_step,secret_resolver,crm_ledger,decision_store,habits_store,notifications_store}.py` และ `infra/scripts/data_lake/{ingest,storage,parquet,iceberg}.py` — สำเนา vendored จาก solo-empire (ต้นฉบับ data lake อยู่ใน solo-data-lake)
+- `infra/scripts/utils/{_env,cell_store,task_store,recurring_step,secret_resolver,crm_ledger,decision_store,habits_store,notifications_store}.py` และ `infra/scripts/data_lake/{ingest,storage,parquet,iceberg}.py` — สำเนา vendored จาก solo-empire (ต้นฉบับ data lake อยู่ใน data-lake)
 - `infra/database/migrations/033_source_registry_intake_queue.sql` — สำเนา migration ของ source registry/intake queue
 - `infra/tests/` — event_hub_test.py, event_hub_live_test.py, sqlite_cell_store double
 
