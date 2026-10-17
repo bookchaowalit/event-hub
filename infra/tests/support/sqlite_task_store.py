@@ -12,7 +12,7 @@ import json
 import os
 import sqlite3
 import sys
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -605,7 +605,7 @@ def use_connection(conn: Any) -> Any:
     return previous
 
 
-def sqlite_opener(conn: Any, automation: str, **_kwargs: Any) -> "SqliteTaskStore":
+def sqlite_opener(conn: Any, automation: str, **_kwargs: Any) -> SqliteTaskStore:
     """Stand-in for ``open_task_store``: the double over the caller's connection.
 
     Production code opens the store with ``None`` (tasks live in the API); the double then uses the
@@ -664,8 +664,8 @@ def apply_legacy_task_tables(conn: sqlite3.Connection) -> None:
 
 __all__ = [
     "SqliteTaskStore",
+    "apply_legacy_task_tables",
+    "fixture_db",
     "sqlite_opener",
     "uses_sqlite_store",
-    "fixture_db",
-    "apply_legacy_task_tables",
 ]

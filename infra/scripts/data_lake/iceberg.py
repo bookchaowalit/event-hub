@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import os
 import re
-from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
@@ -43,7 +42,7 @@ def _require_pyiceberg():
 
 def _catalog_properties(catalog_uri: str, warehouse_uri: str) -> dict[str, str]:
     """Build PyIceberg properties for local SQL or hosted REST catalogs."""
-    if catalog_uri.startswith("sqlite://") or catalog_uri.startswith("postgresql"):
+    if catalog_uri.startswith(("sqlite://", "postgresql")):
         return {
             "type": "sql",
             "uri": catalog_uri,

@@ -13,7 +13,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 from typing import Any
 
@@ -164,7 +164,7 @@ def apply_legacy_portfolio_tables(conn: sqlite3.Connection) -> None:
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    return datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
 
 
 class SqliteCellStore:
@@ -254,7 +254,7 @@ class SqliteCellStore:
     def create(
         self, plural: str, fields: dict[str, Any], *, idempotency_key: str | None = None
     ) -> dict[str, Any]:
-        table, key, _, bools = self._resource(plural)
+        table, key, _, _bools = self._resource(plural)
         if (
             idempotency_key and (plural, idempotency_key) in self._keys
         ):  # a replay returns the first result

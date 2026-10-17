@@ -15,7 +15,7 @@ import re
 import sqlite3
 import sys
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 from typing import Any
 
@@ -65,12 +65,12 @@ def timestamp(value: Any) -> datetime:
     if not isinstance(value, str) or len(value) > 40:
         raise Rejected("invalid_timestamp")
     try:
-        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))  # noqa: FURB162 - keep the explicit "Z" handling; lint pass is behaviour-neutral
     except ValueError as exc:
         raise Rejected("invalid_timestamp") from exc
     if dt.tzinfo is None:
         raise Rejected("timezone_required")
-    return dt.astimezone(timezone.utc)
+    return dt.astimezone(UTC)
 
 
 def finite(value: Any) -> bool:
@@ -459,7 +459,7 @@ class Hub:
                     # The exclusive process lock proves the previous worker is
                     # gone. Close its lease through the existing fenced API.
                     expires = intake.lease_expiry(found)
-                    if expires and expires > datetime.now(timezone.utc):
+                    if expires and expires > datetime.now(UTC):
                         self.call(
                             "fail",
                             [

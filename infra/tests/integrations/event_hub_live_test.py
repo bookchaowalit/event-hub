@@ -10,7 +10,7 @@ import sys
 import subprocess
 import time
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 from pathlib import Path
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
@@ -51,7 +51,7 @@ def main():
     client.connect("127.0.0.1", 1884, 30)
     client.loop_start()
     started = time.monotonic()
-    base = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(seconds=10)
+    base = datetime.now(UTC).replace(microsecond=0) - timedelta(seconds=10)
 
     def event(name, value, offset, source="sensor-demo"):
         obj = e.fixture(source, value, suffix + "-" + name)

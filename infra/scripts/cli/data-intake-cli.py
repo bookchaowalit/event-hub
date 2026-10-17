@@ -31,7 +31,7 @@ import json
 import os
 import re
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 from pathlib import Path
 from typing import Any
 
@@ -94,24 +94,19 @@ SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 
 
 def utc_now() -> str:
-    return (
-        datetime.now(timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
-        .replace("+00:00", "Z")
-    )
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def parse_utc(value: Any) -> datetime | None:
     if not isinstance(value, str) or not value.strip():
         return None
     try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))  # noqa: FURB162 - keep the explicit "Z" handling; lint pass is behaviour-neutral
     except ValueError:
         return None
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def lease_expiry(row: Row) -> datetime | None:
@@ -190,7 +185,7 @@ def get_store() -> Any:
 
 
 def parse_sort(value: Any) -> datetime:
-    return parse_utc(value) or datetime.min.replace(tzinfo=timezone.utc)
+    return parse_utc(value) or datetime.min.replace(tzinfo=UTC)
 
 
 def public_source(row: Row) -> dict[str, Any]:
@@ -558,7 +553,7 @@ def cmd_claim(args: argparse.Namespace, conn: Any) -> None:
         )
     worker = safe_text(args.worker, "worker", max_length=80)
     lease_minutes = max(1, min(args.lease_minutes, 1440))
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if row["status"] == "processing":
         expires = lease_expiry(row)
         if expires is not None and expires > now:
@@ -587,7 +582,7 @@ def cmd_claim(args: argparse.Namespace, conn: Any) -> None:
             version=updated["version"],
         )
         row = intake_by_identifier(conn, args.intake)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
     if row["status"] != "queued":
         raise ValueError(
             f"intake {row['intake_key']!r} is {row['status']}; only queued items can be claimed"
@@ -642,7 +637,7 @@ def cmd_renew(args: argparse.Namespace, conn: Any) -> None:
     worker = safe_text(args.worker, "worker", max_length=80)
     if row["lease_owner"] != worker:
         raise ValueError("intake is leased by another worker")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expires = lease_expiry(row)
     if expires is None:
         raise ValueError(
@@ -703,7 +698,7 @@ def cmd_land(args: argparse.Namespace, conn: Any) -> None:
     digest = sha256(args.raw_sha256)
     if args.record_count < 1:
         raise ValueError("record_count must be at least 1")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expires = lease_expiry(row)
     if expires is None:
         raise ValueError(
@@ -872,7 +867,7 @@ def cmd_fail(args: argparse.Namespace, conn: Any) -> None:
         )
     code = component(args.error_code, "error_code", max_length=80)
     message = safe_text(args.error_message, "error_message", max_length=500)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expires = lease_expiry(row)
     if expires is None:
         raise ValueError(

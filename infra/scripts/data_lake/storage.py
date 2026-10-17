@@ -159,8 +159,7 @@ class ObjectStore:
             return subprocess.run(
                 ["aws", *args],
                 input=input_bytes,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                capture_output=True,
                 check=False,
             )
         except FileNotFoundError as exc:

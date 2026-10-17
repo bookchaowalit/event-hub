@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """Event-hub reliability, lake-first, auth, and policy regressions (offline)."""
 
-import copy
 import json
 import sqlite3
 import sys
 import tempfile
 import threading
 import unittest
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 from http.server import HTTPServer
 from pathlib import Path
 from unittest.mock import patch
@@ -34,7 +33,7 @@ class HubTests(unittest.TestCase):
             self.runtime / "intake-cell.db", check_same_thread=False
         )
         self.hub = self.new_hub()
-        self.now = datetime.now(timezone.utc).replace(microsecond=0)
+        self.now = datetime.now(UTC).replace(microsecond=0)
 
     def new_hub(self):
         # The intake tables live in the Intake cell; the double keeps them across hub restarts.

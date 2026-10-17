@@ -13,12 +13,10 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from http.cookies import SimpleCookie
 from pathlib import Path
-from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from event_hub import (
     DEFAULT_CONFIG,
-    DEFAULT_RUNTIME,
     INFRA,
     MAX_BYTES,
     Hub,
@@ -116,6 +114,7 @@ def _password_stage(runtime: Path, values: dict) -> Path:
         ],
         capture_output=True,
         timeout=60,
+        check=False,  # returncode is checked below
     )
     if result.returncode:
         stage.unlink(missing_ok=True)
