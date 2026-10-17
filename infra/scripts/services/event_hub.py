@@ -277,6 +277,7 @@ class Hub:
             ("last_attempt_at", "TEXT"),
         ]:
             if name not in columns:
+                # nosemgrep: python.lang.security.audit.formatted-sql-query.formatted-sql-query, python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query -- local SQLite migration: column name and declaration come from the fixed list just above
                 self.conn.execute(
                     f"ALTER TABLE hub_receipts ADD COLUMN {name} {declaration}"
                 )
@@ -648,6 +649,7 @@ class Hub:
             where = "status!='complete'"
             if automatic:
                 where += " AND attempt_count<5 AND (last_attempt_at IS NULL OR (julianday('now')-julianday(last_attempt_at))*86400 >= min(300,15*(1 << max(0,attempt_count-1))))"
+            # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query -- the WHERE text is chosen from two fixed literals; the limit is bound as a ? parameter
             rows = self.conn.execute(
                 f"SELECT identity FROM hub_receipts WHERE {where} ORDER BY received_at,rowid LIMIT ?",
                 (limit,),
