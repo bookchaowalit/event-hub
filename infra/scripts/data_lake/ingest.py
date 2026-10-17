@@ -23,7 +23,7 @@ import os
 import re
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 from typing import Any
 
@@ -100,7 +100,7 @@ def _batch_id(
 
 
 def utc_now() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def _read_payload(input_name: str, format_name: str) -> tuple[bytes, list[Any], str]:
@@ -170,7 +170,9 @@ def _normalize_record(
     raw_input: bool,
 ) -> dict[str, str | None]:
     source_record_id_value = _record_value(record, source_record_id_field)
-    source_record_id = None if source_record_id_value is None else str(source_record_id_value)
+    source_record_id = (
+        None if source_record_id_value is None else str(source_record_id_value)
+    )
     payload_json = None if raw_input else canonical_json(record)
     identity = "\0".join([source, source_record_id or payload_json or raw_sha256])
     event_id = hashlib.sha256(identity.encode("utf-8")).hexdigest()
@@ -261,7 +263,9 @@ def _ingest_payload(
         # Preserve idempotency for provider-tagged batches written before the
         # provider-aware identity was introduced, but never reuse a legacy
         # manifest belonging to a different provider/source adapter.
-        legacy_key = f"control/manifests/source={source}/batch_id={legacy_batch_id}.json"
+        legacy_key = (
+            f"control/manifests/source={source}/batch_id={legacy_batch_id}.json"
+        )
         legacy_manifest, legacy_bytes = read_manifest(legacy_key)
         if legacy_manifest is not None:
             compatible = all(
@@ -274,7 +278,10 @@ def _ingest_payload(
                     "metadata": metadata,
                 }.items()
             )
-            compatible = compatible and legacy_manifest.get("raw", {}).get("sha256") == raw_sha256
+            compatible = (
+                compatible
+                and legacy_manifest.get("raw", {}).get("sha256") == raw_sha256
+            )
             if compatible:
                 batch_id = legacy_batch_id
                 manifest_key = legacy_key
@@ -293,9 +300,13 @@ def _ingest_payload(
         try:
             checkpoint = json.loads(checkpoint_bytes.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise StorageError(f"Batch {batch_id} has an invalid ingest checkpoint") from exc
+            raise StorageError(
+                f"Batch {batch_id} has an invalid ingest checkpoint"
+            ) from exc
         if not isinstance(checkpoint, dict):
-            raise StorageError(f"Batch {batch_id} has an invalid ingest checkpoint shape")
+            raise StorageError(
+                f"Batch {batch_id} has an invalid ingest checkpoint shape"
+            )
         if existing_manifest is None:
             expected_checkpoint = {
                 "source": source,
@@ -309,10 +320,14 @@ def _ingest_payload(
             }
             for field, value in expected_checkpoint.items():
                 if checkpoint.get(field) != value:
-                    raise StorageError(f"Batch {batch_id} checkpoint does not match {field}")
+                    raise StorageError(
+                        f"Batch {batch_id} checkpoint does not match {field}"
+                    )
             for field in ("received_at", "run_id", "raw_key", "bronze_key"):
                 if not isinstance(checkpoint.get(field), str) or not checkpoint[field]:
-                    raise StorageError(f"Batch {batch_id} checkpoint is missing {field}")
+                    raise StorageError(
+                        f"Batch {batch_id} checkpoint is missing {field}"
+                    )
 
     if existing_manifest is not None:
         expected = {
@@ -333,7 +348,9 @@ def _ingest_payload(
         if stored_raw.get("sha256") != raw_sha256:
             raise StorageError(f"Batch {batch_id} checksum does not match its manifest")
         if existing_manifest.get("metadata", {}) != metadata:
-            raise StorageError(f"Batch {batch_id} already exists with different metadata")
+            raise StorageError(
+                f"Batch {batch_id} already exists with different metadata"
+            )
         if iceberg_catalog_uri and "iceberg" not in existing_manifest:
             raise StorageError(
                 f"Batch {batch_id} has a legacy manifest without Iceberg metadata; "
@@ -360,8 +377,13 @@ def _ingest_payload(
             ) from exc
         expected_bronze_sha = existing_manifest.get("bronze", {}).get("sha256")
         bronze_sha = hashlib.sha256(stored_bronze).hexdigest()
-        if not isinstance(expected_bronze_sha, str) or bronze_sha != expected_bronze_sha:
-            raise StorageError(f"Batch {batch_id} manifest Bronze checksum does not match its object")
+        if (
+            not isinstance(expected_bronze_sha, str)
+            or bronze_sha != expected_bronze_sha
+        ):
+            raise StorageError(
+                f"Batch {batch_id} manifest Bronze checksum does not match its object"
+            )
         return {
             "status": "success",
             "data_lake": store.describe(),
@@ -394,9 +416,7 @@ def _ingest_payload(
                     provider_part = f"/provider={slug(str(metadata['provider']))}"
                 except ValueError:
                     provider_part = ""
-            raw_key = (
-                f"landing/source={source}{provider_part}/batch_id={batch_id}/payload.{extension}"
-            )
+            raw_key = f"landing/source={source}{provider_part}/batch_id={batch_id}/payload.{extension}"
             bronze_key = (
                 f"bronze/domain={domain}/dataset={dataset}/schema_version={schema_version}/"
                 f"ingest_date={received_date}/source={source}/part-{batch_id}.parquet"
@@ -404,9 +424,13 @@ def _ingest_payload(
 
     if checkpoint is not None:
         if checkpoint.get("input_format") != extension:
-            raise StorageError(f"Batch {batch_id} checkpoint does not match input format")
+            raise StorageError(
+                f"Batch {batch_id} checkpoint does not match input format"
+            )
         if checkpoint.get("content_type") != content_type:
-            raise StorageError(f"Batch {batch_id} checkpoint does not match content type")
+            raise StorageError(
+                f"Batch {batch_id} checkpoint does not match content type"
+            )
     # ``html`` stores exact browser/source bytes in landing while still writing
     # structured Bronze rows (payload_json) for DuckDB API consumers.
     raw_input = extension in {"bin", "binary"}
@@ -470,7 +494,9 @@ def _ingest_payload(
         )
 
     raw_result = store.put_bytes(raw_key, raw, content_type=content_type)
-    bronze_result = store.put_bytes(bronze_key, parquet_bytes, content_type="application/vnd.apache.parquet")
+    bronze_result = store.put_bytes(
+        bronze_key, parquet_bytes, content_type="application/vnd.apache.parquet"
+    )
     iceberg_result: dict[str, Any] | None = None
     if iceberg_catalog_uri:
         from data_lake.iceberg import register_bronze_file
@@ -543,7 +569,9 @@ def _ingest_payload(
         "manifest_existed": manifest_result.existed,
         "checkpoint_key": checkpoint_key,
         "checkpoint_existed": bool(
-            checkpoint_result.existed if checkpoint_result is not None else checkpoint is not None
+            checkpoint_result.existed
+            if checkpoint_result is not None
+            else checkpoint is not None
         ),
         "iceberg": iceberg_result,
     }
@@ -669,8 +697,12 @@ def ingest(args: argparse.Namespace) -> dict[str, Any]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", required=True, help="JSON/JSONL/CSV/file path, or - for stdin")
-    parser.add_argument("--source", required=True, help="Source adapter name, e.g. gmail or github")
+    parser.add_argument(
+        "--input", required=True, help="JSON/JSONL/CSV/file path, or - for stdin"
+    )
+    parser.add_argument(
+        "--source", required=True, help="Source adapter name, e.g. gmail or github"
+    )
     parser.add_argument("--domain", required=True, help="Owning Solo Empire domain")
     parser.add_argument("--dataset", required=True, help="Logical dataset name")
     parser.add_argument("--data-lake-uri", default=DEFAULT_LAKE_URI)
@@ -684,7 +716,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--event-time-field")
     parser.add_argument("--content-type")
     parser.add_argument("--metadata", help="JSON object attached to every Bronze row")
-    parser.add_argument("--privacy-class", choices=["public", "internal", "private", "restricted"], default="private")
+    parser.add_argument(
+        "--privacy-class",
+        choices=["public", "internal", "private", "restricted"],
+        default="private",
+    )
     parser.add_argument("--retention-class", default="operational")
     parser.add_argument(
         "--iceberg-catalog-uri",
@@ -694,7 +730,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--iceberg-warehouse-uri",
         help="Iceberg metadata warehouse URI; defaults to the data-lake URI",
     )
-    parser.add_argument("--json", action="store_true", dest="as_json", help="Print a JSON summary")
+    parser.add_argument(
+        "--json", action="store_true", dest="as_json", help="Print a JSON summary"
+    )
     return parser
 
 

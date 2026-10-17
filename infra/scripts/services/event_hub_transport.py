@@ -1,4 +1,5 @@
 """Loopback-only pilot transports; per-source HTTP auth and MQTT QoS 1."""
+
 from __future__ import annotations
 
 import hmac
@@ -12,10 +13,18 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from http.cookies import SimpleCookie
 from pathlib import Path
-from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from event_hub import DEFAULT_CONFIG, DEFAULT_RUNTIME, INFRA, MAX_BYTES, Hub, Rejected, canonical_json, fixture, load_config
+from event_hub import (
+    DEFAULT_CONFIG,
+    INFRA,
+    MAX_BYTES,
+    Hub,
+    Rejected,
+    canonical_json,
+    fixture,
+    load_config,
+)
 
 
 def read_secrets(runtime: Path) -> dict:
@@ -25,7 +34,11 @@ def read_secrets(runtime: Path) -> dict:
     values = json.loads(path.read_text())
     if set(values) != {"mqtt", "http", "operator"}:
         raise RuntimeError("invalid_secret_file")
-    if not isinstance(values["mqtt"], dict) or not isinstance(values["http"], dict) or not isinstance(values["operator"], str):
+    if (
+        not isinstance(values["mqtt"], dict)
+        or not isinstance(values["http"], dict)
+        or not isinstance(values["operator"], str)
+    ):
         raise RuntimeError("invalid_secret_file")
     return values
 
@@ -77,10 +90,32 @@ def _password_stage(runtime: Path, values: dict) -> Path:
     stage.unlink(missing_ok=True)
     fd = os.open(stage, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     with os.fdopen(fd, "w") as stream:
-        stream.write("".join(f"{name}:{password}\n" for name, password in sorted(values["mqtt"].items())))
-    result = subprocess.run(["docker", "run", "--rm", "--network", "none", "--user", "0",
-        "--mount", f"type=bind,source={auth},target=/auth", "eclipse-mosquitto:2.0.18",
-        "mosquitto_passwd", "-U", "/auth/.passwords.tmp"], capture_output=True, timeout=60)
+        stream.write(
+            "".join(
+                f"{name}:{password}\n"
+                for name, password in sorted(values["mqtt"].items())
+            )
+        )
+    result = subprocess.run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--network",
+            "none",
+            "--user",
+            "0",
+            "--mount",
+            f"type=bind,source={auth},target=/auth",
+            "eclipse-mosquitto:2.0.18",
+            "mosquitto_passwd",
+            "-U",
+            "/auth/.passwords.tmp",
+        ],
+        capture_output=True,
+        timeout=60,
+        check=False,  # returncode is checked below
+    )
     if result.returncode:
         stage.unlink(missing_ok=True)
         raise RuntimeError("mqtt_password_setup_failed")
@@ -102,11 +137,17 @@ def setup(runtime: Path, config: Path) -> dict:
     load_config(config)
     path = runtime / "secrets.json"
     if not path.exists():
-        values = {"mqtt": {"sensor-demo": secrets.token_urlsafe(32), "event-hub": secrets.token_urlsafe(32)},
-                  "http": {"app-demo": secrets.token_urlsafe(32)}, "operator": secrets.token_urlsafe(32)}
+        values = {
+            "mqtt": {
+                "sensor-demo": secrets.token_urlsafe(32),
+                "event-hub": secrets.token_urlsafe(32),
+            },
+            "http": {"app-demo": secrets.token_urlsafe(32)},
+            "operator": secrets.token_urlsafe(32),
+        }
         fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
         with os.fdopen(fd, "w") as stream:
-            stream.write(canonical_json(values)+"\n")
+            stream.write(canonical_json(values) + "\n")
     values = read_secrets(runtime)
     auth = runtime / "auth"
     auth.mkdir(mode=0o700, exist_ok=True)
@@ -123,8 +164,14 @@ def setup(runtime: Path, config: Path) -> dict:
     return {"status": "ready", "message": "เตรียมค่าของ pilot แล้ว"}
 
 
-def onboard(runtime: Path, config: Path, source_id: str, event_type: str,
-            device_host: str, device_port: int) -> dict:
+def onboard(
+    runtime: Path,
+    config: Path,
+    source_id: str,
+    event_type: str,
+    device_host: str,
+    device_port: int,
+) -> dict:
     """Create one scoped MQTT identity and a private device connection profile."""
     setup(runtime, config)
     runtime = runtime.resolve()
@@ -148,7 +195,9 @@ def onboard(runtime: Path, config: Path, source_id: str, event_type: str,
     next_values["mqtt"][source_id] = password
     next_config = json.loads(canonical_json(cfg))
     next_config["sources"][source_id] = {
-        "enabled": True, "transport": "mqtt", "event_types": [event_type],
+        "enabled": True,
+        "transport": "mqtt",
+        "event_types": [event_type],
     }
     stage = _password_stage(runtime, next_values)
     try:
@@ -164,23 +213,43 @@ def onboard(runtime: Path, config: Path, source_id: str, event_type: str,
     devices.mkdir(mode=0o700, exist_ok=True)
     profile = {
         "schema_version": "event-hub.device-profile.v1",
-        "source_id": source_id, "username": source_id, "password": password,
-        "host": device_host, "port": int(device_port), "topic": f"se/events/{source_id}",
-        "qos": 1, "retain": False,
-        "event": {"schema_version": "event.v1", "source_id": source_id,
-                   "event_type": event_type, "payload": {"value": 0, "unit": "celsius"}},
+        "source_id": source_id,
+        "username": source_id,
+        "password": password,
+        "host": device_host,
+        "port": int(device_port),
+        "topic": f"se/events/{source_id}",
+        "qos": 1,
+        "retain": False,
+        "event": {
+            "schema_version": "event.v1",
+            "source_id": source_id,
+            "event_type": event_type,
+            "payload": {"value": 0, "unit": "celsius"},
+        },
     }
     profile_path = devices / f"{source_id}.json"
     write_private_json(profile_path, profile)
-    return {"status": "created", "source_id": source_id, "topic": profile["topic"],
-            "profile_path": str(profile_path), "restart_required": True,
-            "message": "อุปกรณ์ถูกลงทะเบียนแล้ว; restart broker เพื่อโหลด ACL ใหม่"}
+    return {
+        "status": "created",
+        "source_id": source_id,
+        "topic": profile["topic"],
+        "profile_path": str(profile_path),
+        "restart_required": True,
+        "message": "อุปกรณ์ถูกลงทะเบียนแล้ว; restart broker เพื่อโหลด ACL ใหม่",
+    }
 
 
 def mqtt_client(values: dict, username: str, *, client_id: str, durable=False):
     import paho.mqtt.client as mqtt
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=client_id,
-                         clean_session=not durable, protocol=mqtt.MQTTv311, manual_ack=durable)
+
+    client = mqtt.Client(
+        mqtt.CallbackAPIVersion.VERSION2,
+        client_id=client_id,
+        clean_session=not durable,
+        protocol=mqtt.MQTTv311,
+        manual_ack=durable,
+    )
     client.username_pw_set(username, values["mqtt"][username])
     client.reconnect_delay_set(min_delay=1, max_delay=30)
     return client
@@ -194,7 +263,9 @@ class MQTTWorker:
         self.ready = threading.Event()
         self.stop_event = threading.Event()
         self.last_error = None
-        self.client = mqtt_client(values, "event-hub", client_id="se-event-hub-worker-v1", durable=True)
+        self.client = mqtt_client(
+            values, "event-hub", client_id="se-event-hub-worker-v1", durable=True
+        )
         self.client.on_connect = self.on_connect
         self.client.on_subscribe = self.on_subscribe
         self.client.on_disconnect = self.on_disconnect
@@ -224,7 +295,9 @@ class MQTTWorker:
                 result = self.hub.reject(message.payload, "mqtt_qos_or_retained")
             else:
                 result = self.hub.receive(message.payload, source, "mqtt")
-            if result["status"] in {"complete", "duplicate", "rejected"} or result.get("retry_exhausted"):
+            if result["status"] in {"complete", "duplicate", "rejected"} or result.get(
+                "retry_exhausted"
+            ):
                 # Exhausted work is durably retained for explicit operator retry.
                 client.ack(message.mid, message.qos)
                 self.last_error = None
@@ -287,18 +360,28 @@ def handler_for(hub: Hub, values: dict, mqtt_worker=None):
                 cookie = SimpleCookie()
                 try:
                     cookie.load(self.headers.get("Cookie", ""))
-                    candidate = cookie["hub_session"].value if "hub_session" in cookie else ""
+                    candidate = (
+                        cookie["hub_session"].value if "hub_session" in cookie else ""
+                    )
                 except Exception:
                     return False
             return hmac.compare_digest(candidate, values["operator"])
 
         def local_origin(self):
-            expected = {f"127.0.0.1:{self.server.server_port}", f"localhost:{self.server.server_port}"}
+            expected = {
+                f"127.0.0.1:{self.server.server_port}",
+                f"localhost:{self.server.server_port}",
+            }
             return self.headers.get("Host") in expected and (
-                not self.headers.get("Origin") or self.headers["Origin"] in {"http://"+x for x in expected})
+                not self.headers.get("Origin")
+                or self.headers["Origin"] in {"http://" + x for x in expected}
+            )
 
         def body(self, maximum=MAX_BYTES):
-            if self.headers.get("Transfer-Encoding") or len(self.headers.get_all("Content-Length", [])) != 1:
+            if (
+                self.headers.get("Transfer-Encoding")
+                or len(self.headers.get_all("Content-Length", [])) != 1
+            ):
                 raise Rejected("content_length_required")
             try:
                 length = int(self.headers["Content-Length"])
@@ -328,18 +411,28 @@ def handler_for(hub: Hub, values: dict, mqtt_worker=None):
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(len(raw)))
                 self.send_header("Cache-Control", "no-store")
-                self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'")
+                self.send_header(
+                    "Content-Security-Policy",
+                    "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+                )
                 self.end_headers()
                 return self.wfile.write(raw)
             if self.path == "/health":
-                healthy = mqtt_worker is None or (mqtt_worker.ready.is_set() and not mqtt_worker.last_error)
+                healthy = mqtt_worker is None or (
+                    mqtt_worker.ready.is_set() and not mqtt_worker.last_error
+                )
                 healthy = healthy and hub.snapshot()["status"] == "healthy"
-                return self.respond(200 if healthy else 503, {"status": "healthy" if healthy else "degraded"})
+                return self.respond(
+                    200 if healthy else 503,
+                    {"status": "healthy" if healthy else "degraded"},
+                )
             if not self.operator():
                 return self.respond(401, {"code": "unauthorized"})
             if self.path == "/api/status":
                 state = hub.snapshot()
-                state["mqtt_connected"] = mqtt_worker.ready.is_set() if mqtt_worker else False
+                state["mqtt_connected"] = (
+                    mqtt_worker.ready.is_set() if mqtt_worker else False
+                )
                 return self.respond(200, state)
             return self.respond(404, {"code": "not_found"})
 
@@ -350,14 +443,26 @@ def handler_for(hub: Hub, values: dict, mqtt_worker=None):
                 if self.path == "/session":
                     if not self.operator():
                         return self.respond(401, {"code": "unauthorized"})
-                    return self.respond(200, {"status": "ok"}, "hub_session="+values["operator"]+"; HttpOnly; SameSite=Strict; Path=/; Max-Age=3600")
+                    return self.respond(
+                        200,
+                        {"status": "ok"},
+                        "hub_session="
+                        + values["operator"]
+                        + "; HttpOnly; SameSite=Strict; Path=/; Max-Age=3600",
+                    )
                 if self.path.startswith("/api/events/"):
-                    source = self.path[len("/api/events/"):]
+                    source = self.path[len("/api/events/") :]
                     expected = values["http"].get(source)
                     if not expected or not hmac.compare_digest(self.bearer(), expected):
                         return self.respond(401, {"code": "unauthorized"})
                     result = hub.receive(self.body(), source, "http")
-                    code = 422 if result["status"] == "rejected" else 503 if result["status"] == "failed" else 200
+                    code = (
+                        422
+                        if result["status"] == "rejected"
+                        else 503
+                        if result["status"] == "failed"
+                        else 200
+                    )
                     return self.respond(code, result)
                 if not self.operator():
                     return self.respond(401, {"code": "unauthorized"})
@@ -383,24 +488,33 @@ def handler_for(hub: Hub, values: dict, mqtt_worker=None):
                 self.respond(400, {"code": str(exc)})
             except Exception:
                 self.respond(503, {"code": "processing_unavailable"})
+
     return Handler
 
 
-def simulate(runtime: Path, transport: str, port: int, mqtt_port: int, value: float) -> dict:
+def simulate(
+    runtime: Path, transport: str, port: int, mqtt_port: int, value: float
+) -> dict:
     values = read_secrets(runtime)
     source = "sensor-demo" if transport == "mqtt" else "app-demo"
     obj = fixture(source, value)
     raw = canonical_json(obj).encode()
     if transport == "http":
-        request = Request(f"http://127.0.0.1:{port}/api/events/{source}", data=raw,
-            headers={"Authorization": "Bearer "+values["http"][source], "Content-Type": "application/json"})
+        request = Request(
+            f"http://127.0.0.1:{port}/api/events/{source}",
+            data=raw,
+            headers={
+                "Authorization": "Bearer " + values["http"][source],
+                "Content-Type": "application/json",
+            },
+        )
         with urlopen(request, timeout=15) as response:
             return json.load(response)
-    client = mqtt_client(values, source, client_id="sim-"+secrets.token_hex(8))
+    client = mqtt_client(values, source, client_id="sim-" + secrets.token_hex(8))
     client.connect("127.0.0.1", mqtt_port, keepalive=30)
     client.loop_start()
     try:
-        info = client.publish("se/events/"+source, raw, qos=1, retain=False)
+        info = client.publish("se/events/" + source, raw, qos=1, retain=False)
         info.wait_for_publish(timeout=10)
         if not info.is_published():
             raise RuntimeError("publish_timeout")
@@ -414,18 +528,32 @@ def run(args):
     if args.command == "setup":
         result = setup(args.runtime, args.config)
     elif args.command == "simulate":
-        result = simulate(args.runtime, args.transport, args.port, args.mqtt_port, args.value)
+        result = simulate(
+            args.runtime, args.transport, args.port, args.mqtt_port, args.value
+        )
     elif args.command == "onboard":
-        result = onboard(args.runtime, args.config, args.source_id, args.event_type,
-                         args.device_host, args.device_port)
+        result = onboard(
+            args.runtime,
+            args.config,
+            args.source_id,
+            args.event_type,
+            args.device_host,
+            args.device_port,
+        )
     else:
         values = read_secrets(args.runtime)
-        config = args.runtime / "config.json" if args.config == DEFAULT_CONFIG else args.config
+        config = (
+            args.runtime / "config.json"
+            if args.config == DEFAULT_CONFIG
+            else args.config
+        )
         hub = Hub(args.runtime, config)
         hub.retry(automatic=True)
         worker = MQTTWorker(hub, values, args.mqtt_port, args.mqtt_host)
+
         class Server(HTTPServer):
             last_retry = 0.0
+
             def service_actions(self):
                 if time.monotonic() - self.last_retry >= 15:
                     self.last_retry = time.monotonic()
@@ -433,9 +561,15 @@ def run(args):
                         hub.retry(limit=10, automatic=True)
                     except Exception:
                         pass  # Receipts retain failure codes for the status API.
+
         server = Server((args.bind, args.port), handler_for(hub, values, worker))
         worker.start()
-        print(canonical_json({"status": "starting", "url": f"http://127.0.0.1:{args.port}"}), flush=True)
+        print(
+            canonical_json(
+                {"status": "starting", "url": f"http://127.0.0.1:{args.port}"}
+            ),
+            flush=True,
+        )
         try:
             server.serve_forever()
         except KeyboardInterrupt:

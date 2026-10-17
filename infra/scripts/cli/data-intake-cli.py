@@ -31,7 +31,7 @@ import json
 import os
 import re
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 from pathlib import Path
 from typing import Any
 
@@ -56,8 +56,15 @@ DEFAULT_LAKE_URI = os.environ.get(
     os.environ.get("DATA_LAKE_URI", str(PROJECT_ROOT / "data" / "lake")),
 )
 SOURCE_KINDS = (
-    "manual", "file", "api", "webhook", "email", "calendar", "database",
-    "application", "other",
+    "manual",
+    "file",
+    "api",
+    "webhook",
+    "email",
+    "calendar",
+    "database",
+    "application",
+    "other",
 )
 OWNER_SCOPES = ("personal", "solo_empire", "venture", "client", "shared")
 PRIVACY_CLASSES = ("public", "internal", "private", "restricted")
@@ -65,7 +72,13 @@ RETENTION_DEFAULT = "operational"
 INGEST_MODES = ("manual", "batch", "stream", "webhook")
 SOURCE_STATUSES = ("planned", "active", "paused", "retired")
 QUEUE_STATUSES = (
-    "queued", "processing", "landed", "verified", "rejected", "failed", "cancelled",
+    "queued",
+    "processing",
+    "landed",
+    "verified",
+    "rejected",
+    "failed",
+    "cancelled",
 )
 PAYLOAD_KINDS = ("json", "jsonl", "csv", "binary", "markdown", "parquet", "other")
 PRIVACY_RANK = {name: index for index, name in enumerate(PRIVACY_CLASSES)}
@@ -81,19 +94,19 @@ SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 
 
 def utc_now() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def parse_utc(value: Any) -> datetime | None:
     if not isinstance(value, str) or not value.strip():
         return None
     try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))  # noqa: FURB162 - keep the explicit "Z" handling; lint pass is behaviour-neutral
     except ValueError:
         return None
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def lease_expiry(row: Row) -> datetime | None:
@@ -172,7 +185,7 @@ def get_store() -> Any:
 
 
 def parse_sort(value: Any) -> datetime:
-    return parse_utc(value) or datetime.min.replace(tzinfo=timezone.utc)
+    return parse_utc(value) or datetime.min.replace(tzinfo=UTC)
 
 
 def public_source(row: Row) -> dict[str, Any]:
@@ -260,15 +273,23 @@ def event(
     produce two events).
     """
     fields: dict[str, Any] = {
-        "intake_id": intake_id, "event_type": event_type, "actor": actor,
-        "from_status": from_status, "to_status": to_status, "reason": reason,
+        "intake_id": intake_id,
+        "event_type": event_type,
+        "actor": actor,
+        "from_status": from_status,
+        "to_status": to_status,
+        "reason": reason,
     }
     if version is None:
         version = int((conn.get("intakes", intake_id) or {}).get("version", 0))
     key = f"intake-event:{intake_id}:{event_type}:{from_status}:{to_status}:{version}"
     for attempt in range(3):  # the status already changed: the event must land too
         try:
-            conn.create("intake-events", {k: v for k, v in fields.items() if v is not None}, idempotency_key=key)
+            conn.create(
+                "intake-events",
+                {k: v for k, v in fields.items() if v is not None},
+                idempotency_key=key,
+            )
             return
         except CellStoreError as exc:
             if exc.status < 500 or attempt == 2:
@@ -276,8 +297,15 @@ def event(
             time.sleep(1 + attempt)
 
 
-REPAIR_EVENT = {"queued": "retried", "processing": "claimed", "landed": "landed", "verified": "verified",
-                "failed": "failed", "rejected": "rejected", "cancelled": "cancelled"}
+REPAIR_EVENT = {
+    "queued": "retried",
+    "processing": "claimed",
+    "landed": "landed",
+    "verified": "verified",
+    "failed": "failed",
+    "rejected": "rejected",
+    "cancelled": "cancelled",
+}
 
 
 def repair_events(conn: Any, row: Row) -> None:
@@ -290,17 +318,33 @@ def repair_events(conn: Any, row: Row) -> None:
     last = events[0] if events else None
     if last is not None and last.get("to_status") == row["status"]:
         return
-    event_type = "queued" if last is None and row["status"] == "queued" else REPAIR_EVENT.get(row["status"])
+    event_type = (
+        "queued"
+        if last is None and row["status"] == "queued"
+        else REPAIR_EVENT.get(row["status"])
+    )
     if event_type is None:
         return
-    event(conn, row["id"], event_type, last.get("to_status") if last else None, row["status"], "repair",
-          "event lost before; recorded on repair", version=int(row.get("version") or 0))
+    event(
+        conn,
+        row["id"],
+        event_type,
+        last.get("to_status") if last else None,
+        row["status"],
+        "repair",
+        "event lost before; recorded on repair",
+        version=int(row.get("version") or 0),
+    )
 
 
-def guarded_update(conn: Any, row: Row, fields: dict[str, Any], conflict_message: str) -> Row:
+def guarded_update(
+    conn: Any, row: Row, fields: dict[str, Any], conflict_message: str
+) -> Row:
     """Update an intake only if nobody changed it since ``row`` was read (replaces the SQL WHERE guards)."""
     try:
-        return conn.update("intakes", row["id"], fields, expected_version=row.get("version"))
+        return conn.update(
+            "intakes", row["id"], fields, expected_version=row.get("version")
+        )
     except CellStoreError as exc:
         if exc.status == 409:
             raise ValueError(conflict_message) from None
@@ -310,16 +354,30 @@ def guarded_update(conn: Any, row: Row, fields: dict[str, Any], conflict_message
 def cmd_source_register(args: argparse.Namespace, conn: Any) -> None:
     source_key = component(args.source_key, "source_key")
     display_name = safe_text(args.display_name, "display_name", max_length=160)
-    provider = safe_text(args.provider, "provider", max_length=80) if args.provider else None
+    provider = (
+        safe_text(args.provider, "provider", max_length=80) if args.provider else None
+    )
     domain = component(args.domain, "domain", max_length=80)
     dataset = component(args.dataset, "dataset", max_length=120)
     retention_class = component(args.retention_class, "retention_class", max_length=64)
-    description = safe_text(args.description, "description", max_length=500) if args.description else None
+    description = (
+        safe_text(args.description, "description", max_length=500)
+        if args.description
+        else None
+    )
     fields: dict[str, Any] = {
-        "source_key": source_key, "display_name": display_name, "source_kind": args.source_kind,
-        "provider": provider, "domain": domain, "dataset": dataset, "owner_scope": args.owner_scope,
-        "privacy_class": args.privacy_class, "retention_class": retention_class,
-        "ingest_mode": args.ingest_mode, "status": args.status, "description": description,
+        "source_key": source_key,
+        "display_name": display_name,
+        "source_kind": args.source_kind,
+        "provider": provider,
+        "domain": domain,
+        "dataset": dataset,
+        "owner_scope": args.owner_scope,
+        "privacy_class": args.privacy_class,
+        "retention_class": retention_class,
+        "ingest_mode": args.ingest_mode,
+        "status": args.status,
+        "description": description,
     }
     conn.create("sources", {k: v for k, v in fields.items() if v is not None})
     row = source_by_key(conn, source_key)
@@ -328,7 +386,9 @@ def cmd_source_register(args: argparse.Namespace, conn: Any) -> None:
 
 def cmd_source_list(args: argparse.Namespace, conn: Any) -> None:
     rows = sorted(
-        conn.list("sources", status=args.status) if args.status else conn.list("sources"),
+        conn.list("sources", status=args.status)
+        if args.status
+        else conn.list("sources"),
         key=lambda row: row["source_key"],
     )
     payload = [public_source(row) for row in rows]
@@ -352,54 +412,91 @@ def cmd_source_set_status(args: argparse.Namespace, conn: Any) -> None:
     if args.status == "planned" and source["status"] == "active":
         raise ValueError("active sources cannot move back to planned")
     conn.update("sources", source["id"], {"status": args.status})
-    json_print({"source_key": source["source_key"], "status": args.status}, args.as_json)
+    json_print(
+        {"source_key": source["source_key"], "status": args.status}, args.as_json
+    )
 
 
 def cmd_enqueue(args: argparse.Namespace, conn: Any) -> None:
     source = source_by_key(conn, args.source_key)
     if source["status"] != "active":
-        raise ValueError(f"source {source['source_key']!r} is {source['status']}; activate it before enqueue")
+        raise ValueError(
+            f"source {source['source_key']!r} is {source['status']}; activate it before enqueue"
+        )
 
     domain = component(args.domain or source["domain"], "domain", max_length=80)
     dataset = component(args.dataset or source["dataset"], "dataset", max_length=120)
     privacy_class = args.privacy_class or source["privacy_class"]
     if PRIVACY_RANK[privacy_class] < PRIVACY_RANK[source["privacy_class"]]:
-        raise ValueError("intake privacy_class cannot be less restrictive than its source")
+        raise ValueError(
+            "intake privacy_class cannot be less restrictive than its source"
+        )
     input_ref = opaque_ref(args.input_ref)
     idempotency_key = safe_text(args.idempotency_key, "idempotency_key", max_length=160)
     source_batch_ref = (
-        opaque_ref(args.source_batch_ref, "source_batch_ref") if args.source_batch_ref else None
+        opaque_ref(args.source_batch_ref, "source_batch_ref")
+        if args.source_batch_ref
+        else None
     )
     retention_class = (
         component(args.retention_class, "retention_class", max_length=64)
-        if args.retention_class else source["retention_class"]
+        if args.retention_class
+        else source["retention_class"]
     )
     intake_key = (
         component(args.intake_key, "intake_key", max_length=96)
         if args.intake_key
-        else "intake-" + hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()[:20]
+        else "intake-"
+        + hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()[:20]
     )
     now = utc_now()
     fields: dict[str, Any] = {
-        "intake_key": intake_key, "source_id": source["id"], "domain": domain, "dataset": dataset,
-        "schema_version": component(args.schema_version, "schema_version", max_length=32),
-        "payload_kind": args.payload_kind, "input_ref": input_ref, "source_batch_ref": source_batch_ref,
-        "idempotency_key": idempotency_key, "privacy_class": privacy_class,
-        "retention_class": retention_class, "requested_by": args.requested_by,
-        "status": "queued", "requested_at": now,
+        "intake_key": intake_key,
+        "source_id": source["id"],
+        "domain": domain,
+        "dataset": dataset,
+        "schema_version": component(
+            args.schema_version, "schema_version", max_length=32
+        ),
+        "payload_kind": args.payload_kind,
+        "input_ref": input_ref,
+        "source_batch_ref": source_batch_ref,
+        "idempotency_key": idempotency_key,
+        "privacy_class": privacy_class,
+        "retention_class": retention_class,
+        "requested_by": args.requested_by,
+        "status": "queued",
+        "requested_at": now,
     }
     created = conn.create("intakes", {k: v for k, v in fields.items() if v is not None})
-    event(conn, int(created["id"]), "queued", None, "queued", args.requested_by, version=created["version"])
+    event(
+        conn,
+        int(created["id"]),
+        "queued",
+        None,
+        "queued",
+        args.requested_by,
+        version=created["version"],
+    )
     row = intake_by_identifier(conn, intake_key)
     json_print(public_intake(row), args.as_json)
 
 
 def cmd_queue(args: argparse.Namespace, conn: Any) -> None:
     sources = {source["id"]: source for source in conn.list("sources")}
-    intakes = conn.list("intakes", status=args.status) if args.status else conn.list("intakes")
+    intakes = (
+        conn.list("intakes", status=args.status)
+        if args.status
+        else conn.list("intakes")
+    )
     intakes = [row for row in intakes if row["source_id"] in sources]
-    intakes.sort(key=lambda row: (parse_sort(row.get("requested_at")), row["id"]), reverse=True)
-    rows = [{**row, "source_key": sources[row["source_id"]]["source_key"]} for row in intakes[: args.limit]]
+    intakes.sort(
+        key=lambda row: (parse_sort(row.get("requested_at")), row["id"]), reverse=True
+    )
+    rows = [
+        {**row, "source_key": sources[row["source_id"]]["source_key"]}
+        for row in intakes[: args.limit]
+    ]
     payload = [public_intake(row) for row in rows]
     if args.as_json:
         json_print(payload, True)
@@ -419,8 +516,13 @@ def cmd_repair(args: argparse.Namespace, conn: Any) -> None:
     row = intake_by_identifier(conn, args.intake)
     repair_events(conn, row)
     if row["status"] == "verified" and row.get("verified_at"):
-        conn.update("sources", row["source_id"], {"last_ingested_at": row["verified_at"]})
-    json_print({"intake_key": row["intake_key"], "status": row["status"], "repaired": True}, args.as_json)
+        conn.update(
+            "sources", row["source_id"], {"last_ingested_at": row["verified_at"]}
+        )
+    json_print(
+        {"intake_key": row["intake_key"], "status": row["status"], "repaired": True},
+        args.as_json,
+    )
 
 
 def cmd_show(args: argparse.Namespace, conn: Any) -> None:
@@ -435,7 +537,8 @@ def cmd_status(args: argparse.Namespace, conn: Any) -> None:
         "sources": {status: source_counts.get(status, 0) for status in SOURCE_STATUSES},
         "intakes": {status: intake_counts.get(status, 0) for status in QUEUE_STATUSES},
         "verified_records": sum(
-            int(row.get("record_count") or 0) for row in conn.list("intakes", status="verified")
+            int(row.get("record_count") or 0)
+            for row in conn.list("intakes", status="verified")
         ),
     }
     json_print(payload, args.as_json)
@@ -445,32 +548,82 @@ def cmd_claim(args: argparse.Namespace, conn: Any) -> None:
     row = intake_by_identifier(conn, args.intake)
     repair_events(conn, row)
     if row["source_status"] != "active":
-        raise ValueError(f"source {row['source_key']!r} is {row['source_status']}; cannot claim intake")
+        raise ValueError(
+            f"source {row['source_key']!r} is {row['source_status']}; cannot claim intake"
+        )
     worker = safe_text(args.worker, "worker", max_length=80)
     lease_minutes = max(1, min(args.lease_minutes, 1440))
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if row["status"] == "processing":
         expires = lease_expiry(row)
         if expires is not None and expires > now:
             raise ValueError(f"intake {row['intake_key']!r} is already leased")
         # A crashed worker must not leave work permanently stuck in
         # processing. Requeue only the exact expired lease before claiming it.
-        updated = guarded_update(conn, row, {
-            "status": "queued", "claimed_at": None, "lease_owner": None, "lease_expires_at": None,
-        }, "intake lease changed before reclaim")
-        event(conn, row["id"], "retried", "processing", "queued", worker, "lease_expired", version=updated["version"])
+        updated = guarded_update(
+            conn,
+            row,
+            {
+                "status": "queued",
+                "claimed_at": None,
+                "lease_owner": None,
+                "lease_expires_at": None,
+            },
+            "intake lease changed before reclaim",
+        )
+        event(
+            conn,
+            row["id"],
+            "retried",
+            "processing",
+            "queued",
+            worker,
+            "lease_expired",
+            version=updated["version"],
+        )
         row = intake_by_identifier(conn, args.intake)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
     if row["status"] != "queued":
-        raise ValueError(f"intake {row['intake_key']!r} is {row['status']}; only queued items can be claimed")
+        raise ValueError(
+            f"intake {row['intake_key']!r} is {row['status']}; only queued items can be claimed"
+        )
     claimed_at = now.replace(microsecond=0).isoformat().replace("+00:00", "Z")
-    expires_at = (now + timedelta(minutes=lease_minutes)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-    updated = guarded_update(conn, row, {
-        "status": "processing", "claimed_at": claimed_at, "lease_owner": worker,
-        "lease_expires_at": expires_at, "attempt_count": int(row.get("attempt_count") or 0) + 1,
-    }, "intake was claimed by another worker")
-    event(conn, row["id"], "claimed", "queued", "processing", worker, version=updated["version"])
-    json_print({"intake_key": row["intake_key"], "status": "processing", "lease_owner": worker, "lease_expires_at": expires_at}, args.as_json)
+    expires_at = (
+        (now + timedelta(minutes=lease_minutes))
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+    updated = guarded_update(
+        conn,
+        row,
+        {
+            "status": "processing",
+            "claimed_at": claimed_at,
+            "lease_owner": worker,
+            "lease_expires_at": expires_at,
+            "attempt_count": int(row.get("attempt_count") or 0) + 1,
+        },
+        "intake was claimed by another worker",
+    )
+    event(
+        conn,
+        row["id"],
+        "claimed",
+        "queued",
+        "processing",
+        worker,
+        version=updated["version"],
+    )
+    json_print(
+        {
+            "intake_key": row["intake_key"],
+            "status": "processing",
+            "lease_owner": worker,
+            "lease_expires_at": expires_at,
+        },
+        args.as_json,
+    )
 
 
 def cmd_renew(args: argparse.Namespace, conn: Any) -> None:
@@ -484,7 +637,7 @@ def cmd_renew(args: argparse.Namespace, conn: Any) -> None:
     worker = safe_text(args.worker, "worker", max_length=80)
     if row["lease_owner"] != worker:
         raise ValueError("intake is leased by another worker")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expires = lease_expiry(row)
     if expires is None:
         raise ValueError(
@@ -505,8 +658,21 @@ def cmd_renew(args: argparse.Namespace, conn: Any) -> None:
         new_expires += timedelta(seconds=1)
     new_expires = new_expires.replace(microsecond=0)
     new_expires_at = new_expires.isoformat().replace("+00:00", "Z")
-    updated = guarded_update(conn, row, {"lease_expires_at": new_expires_at}, "intake lease changed or expired before renewal")
-    event(conn, row["id"], "lease_renewed", "processing", "processing", worker, version=updated["version"])
+    updated = guarded_update(
+        conn,
+        row,
+        {"lease_expires_at": new_expires_at},
+        "intake lease changed or expired before renewal",
+    )
+    event(
+        conn,
+        row["id"],
+        "lease_renewed",
+        "processing",
+        "processing",
+        worker,
+        version=updated["version"],
+    )
     json_print(
         {
             "intake_key": row["intake_key"],
@@ -522,7 +688,9 @@ def cmd_land(args: argparse.Namespace, conn: Any) -> None:
     row = intake_by_identifier(conn, args.intake)
     repair_events(conn, row)
     if row["status"] != "processing":
-        raise ValueError(f"intake {row['intake_key']!r} is {row['status']}; only processing items can be landed")
+        raise ValueError(
+            f"intake {row['intake_key']!r} is {row['status']}; only processing items can be landed"
+        )
     run_id = opaque_ref(args.lake_run_id, "lake_run_id")
     manifest_key = object_key(args.manifest_key, "manifest_key", "control/manifests/")
     raw_key = object_key(args.raw_key, "raw_key", "landing/")
@@ -530,27 +698,62 @@ def cmd_land(args: argparse.Namespace, conn: Any) -> None:
     digest = sha256(args.raw_sha256)
     if args.record_count < 1:
         raise ValueError("record_count must be at least 1")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expires = lease_expiry(row)
     if expires is None:
-        raise ValueError(f"intake {row['intake_key']!r} has no active lease; reclaim before landing")
+        raise ValueError(
+            f"intake {row['intake_key']!r} has no active lease; reclaim before landing"
+        )
     if expires <= now:
-        raise ValueError(f"intake {row['intake_key']!r} lease has expired; reclaim before landing")
+        raise ValueError(
+            f"intake {row['intake_key']!r} lease has expired; reclaim before landing"
+        )
     worker = safe_text(args.worker, "worker", max_length=80)
     if row["lease_owner"] != worker:
         raise ValueError("intake is leased by another worker")
     actor = safe_text(args.actor, "actor", max_length=80)
-    updated = guarded_update(conn, row, {
-        "status": "landed", "record_count": args.record_count, "raw_sha256": digest,
-        "lake_run_id": run_id, "lake_manifest_key": manifest_key, "lake_raw_object_key": raw_key,
-        "lake_bronze_object_key": bronze_key, "lease_owner": None, "lease_expires_at": None,
-    }, "intake changed state before landing")
-    event(conn, row["id"], "landed", "processing", "landed", actor, version=updated["version"])
-    json_print({"intake_key": row["intake_key"], "status": "landed", "lake_run_id": run_id, "record_count": args.record_count}, args.as_json)
+    updated = guarded_update(
+        conn,
+        row,
+        {
+            "status": "landed",
+            "record_count": args.record_count,
+            "raw_sha256": digest,
+            "lake_run_id": run_id,
+            "lake_manifest_key": manifest_key,
+            "lake_raw_object_key": raw_key,
+            "lake_bronze_object_key": bronze_key,
+            "lease_owner": None,
+            "lease_expires_at": None,
+        },
+        "intake changed state before landing",
+    )
+    event(
+        conn,
+        row["id"],
+        "landed",
+        "processing",
+        "landed",
+        actor,
+        version=updated["version"],
+    )
+    json_print(
+        {
+            "intake_key": row["intake_key"],
+            "status": "landed",
+            "lake_run_id": run_id,
+            "record_count": args.record_count,
+        },
+        args.as_json,
+    )
 
 
 def verify_manifest(row: Row, data_lake_uri: str) -> None:
-    if not row["lake_manifest_key"] or not row["lake_raw_object_key"] or not row["lake_bronze_object_key"]:
+    if (
+        not row["lake_manifest_key"]
+        or not row["lake_raw_object_key"]
+        or not row["lake_bronze_object_key"]
+    ):
         raise ValueError("landed intake is missing lake lineage")
     try:
         store = ObjectStore(data_lake_uri)
@@ -568,7 +771,9 @@ def verify_manifest(row: Row, data_lake_uri: str) -> None:
         raw_bytes = store.get_bytes(row["lake_raw_object_key"])
         bronze_bytes = store.get_bytes(row["lake_bronze_object_key"])
     except StorageError as exc:
-        raise ValueError("lake manifest references a missing raw or Bronze object") from exc
+        raise ValueError(
+            "lake manifest references a missing raw or Bronze object"
+        ) from exc
     actual_raw_sha256 = hashlib.sha256(raw_bytes).hexdigest()
     actual_bronze_sha256 = hashlib.sha256(bronze_bytes).hexdigest()
 
@@ -603,61 +808,137 @@ def verify_manifest(row: Row, data_lake_uri: str) -> None:
 def cmd_verify(args: argparse.Namespace, conn: Any) -> None:
     row = intake_by_identifier(conn, args.intake)
     repair_events(conn, row)
-    if row["status"] == "verified":  # a rerun after a lost source update or event: finish them, change nothing else
+    if (
+        row["status"] == "verified"
+    ):  # a rerun after a lost source update or event: finish them, change nothing else
         actor = safe_text(args.actor, "actor", max_length=80)
-        conn.update("sources", row["source_id"], {"last_ingested_at": row["verified_at"]})
+        conn.update(
+            "sources", row["source_id"], {"last_ingested_at": row["verified_at"]}
+        )
         event(conn, row["id"], "verified", "landed", "verified", actor)
-        json_print({"intake_key": row["intake_key"], "status": "verified", "verified_at": row["verified_at"]},
-                   args.as_json)
+        json_print(
+            {
+                "intake_key": row["intake_key"],
+                "status": "verified",
+                "verified_at": row["verified_at"],
+            },
+            args.as_json,
+        )
         return
     if row["status"] != "landed":
-        raise ValueError(f"intake {row['intake_key']!r} is {row['status']}; only landed items can be verified")
+        raise ValueError(
+            f"intake {row['intake_key']!r} is {row['status']}; only landed items can be verified"
+        )
     verify_manifest(row, args.data_lake_uri)
     actor = safe_text(args.actor, "actor", max_length=80)
     verified_at = utc_now()
-    updated = guarded_update(conn, row, {"status": "verified", "verified_at": verified_at},
-                   "intake changed state before verification")
+    updated = guarded_update(
+        conn,
+        row,
+        {"status": "verified", "verified_at": verified_at},
+        "intake changed state before verification",
+    )
     conn.update("sources", row["source_id"], {"last_ingested_at": verified_at})
-    event(conn, row["id"], "verified", "landed", "verified", actor, version=updated["version"])
-    json_print({"intake_key": row["intake_key"], "status": "verified", "verified_at": verified_at}, args.as_json)
+    event(
+        conn,
+        row["id"],
+        "verified",
+        "landed",
+        "verified",
+        actor,
+        version=updated["version"],
+    )
+    json_print(
+        {
+            "intake_key": row["intake_key"],
+            "status": "verified",
+            "verified_at": verified_at,
+        },
+        args.as_json,
+    )
 
 
 def cmd_fail(args: argparse.Namespace, conn: Any) -> None:
     row = intake_by_identifier(conn, args.intake)
     repair_events(conn, row)
     if row["status"] != "processing":
-        raise ValueError(f"intake {row['intake_key']!r} is {row['status']}; only processing items can fail")
+        raise ValueError(
+            f"intake {row['intake_key']!r} is {row['status']}; only processing items can fail"
+        )
     code = component(args.error_code, "error_code", max_length=80)
     message = safe_text(args.error_message, "error_message", max_length=500)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expires = lease_expiry(row)
     if expires is None:
-        raise ValueError(f"intake {row['intake_key']!r} has no active lease; reclaim before failing")
+        raise ValueError(
+            f"intake {row['intake_key']!r} has no active lease; reclaim before failing"
+        )
     if expires <= now:
-        raise ValueError(f"intake {row['intake_key']!r} lease has expired; reclaim before failing")
+        raise ValueError(
+            f"intake {row['intake_key']!r} lease has expired; reclaim before failing"
+        )
     worker = safe_text(args.worker, "worker", max_length=80)
     if row["lease_owner"] != worker:
         raise ValueError("intake is leased by another worker")
     actor = safe_text(args.actor, "actor", max_length=80)
-    updated = guarded_update(conn, row, {
-        "status": "failed", "error_code": code, "error_message": message,
-        "lease_owner": None, "lease_expires_at": None,
-    }, "intake lease changed before failing")
-    event(conn, row["id"], "failed", "processing", "failed", actor, code, version=updated["version"])
-    json_print({"intake_key": row["intake_key"], "status": "failed", "error_code": code}, args.as_json)
+    updated = guarded_update(
+        conn,
+        row,
+        {
+            "status": "failed",
+            "error_code": code,
+            "error_message": message,
+            "lease_owner": None,
+            "lease_expires_at": None,
+        },
+        "intake lease changed before failing",
+    )
+    event(
+        conn,
+        row["id"],
+        "failed",
+        "processing",
+        "failed",
+        actor,
+        code,
+        version=updated["version"],
+    )
+    json_print(
+        {"intake_key": row["intake_key"], "status": "failed", "error_code": code},
+        args.as_json,
+    )
 
 
 def cmd_retry(args: argparse.Namespace, conn: Any) -> None:
     row = intake_by_identifier(conn, args.intake)
     repair_events(conn, row)
     if row["status"] not in {"failed", "rejected"}:
-        raise ValueError(f"intake {row['intake_key']!r} is {row['status']}; only failed/rejected items can retry")
+        raise ValueError(
+            f"intake {row['intake_key']!r} is {row['status']}; only failed/rejected items can retry"
+        )
     actor = safe_text(args.actor, "actor", max_length=80)
-    updated = guarded_update(conn, row, {
-        "status": "queued", "error_code": None, "error_message": None,
-        "claimed_at": None, "lease_owner": None, "lease_expires_at": None,
-    }, "intake changed state before retry")
-    event(conn, row["id"], "retried", row["status"], "queued", actor, version=updated["version"])
+    updated = guarded_update(
+        conn,
+        row,
+        {
+            "status": "queued",
+            "error_code": None,
+            "error_message": None,
+            "claimed_at": None,
+            "lease_owner": None,
+            "lease_expires_at": None,
+        },
+        "intake changed state before retry",
+    )
+    event(
+        conn,
+        row["id"],
+        "retried",
+        row["status"],
+        "queued",
+        actor,
+        version=updated["version"],
+    )
     json_print({"intake_key": row["intake_key"], "status": "queued"}, args.as_json)
 
 
@@ -665,19 +946,40 @@ def cmd_reject(args: argparse.Namespace, conn: Any) -> None:
     row = intake_by_identifier(conn, args.intake)
     repair_events(conn, row)
     if row["status"] not in {"queued", "processing", "landed"}:
-        raise ValueError(f"intake {row['intake_key']!r} is {row['status']}; cannot reject it")
+        raise ValueError(
+            f"intake {row['intake_key']!r} is {row['status']}; cannot reject it"
+        )
     reason = safe_text(args.reason, "reason", max_length=500)
     actor = safe_text(args.actor, "actor", max_length=80)
-    updated = guarded_update(conn, row, {
-        "status": "rejected", "error_code": "rejected_by_policy", "error_message": reason,
-        "lease_owner": None, "lease_expires_at": None,
-    }, "intake changed state before rejection")
-    event(conn, row["id"], "rejected", row["status"], "rejected", actor, reason, version=updated["version"])
+    updated = guarded_update(
+        conn,
+        row,
+        {
+            "status": "rejected",
+            "error_code": "rejected_by_policy",
+            "error_message": reason,
+            "lease_owner": None,
+            "lease_expires_at": None,
+        },
+        "intake changed state before rejection",
+    )
+    event(
+        conn,
+        row["id"],
+        "rejected",
+        row["status"],
+        "rejected",
+        actor,
+        reason,
+        version=updated["version"],
+    )
     json_print({"intake_key": row["intake_key"], "status": "rejected"}, args.as_json)
 
 
 def add_json_flag(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--json", action="store_true", dest="as_json", help="Print privacy-safe JSON")
+    parser.add_argument(
+        "--json", action="store_true", dest="as_json", help="Print privacy-safe JSON"
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -690,7 +992,9 @@ def build_parser() -> argparse.ArgumentParser:
     register = source_sub.add_parser("register")
     register.add_argument("--key", dest="source_key", required=True)
     register.add_argument("--name", dest="display_name", required=True)
-    register.add_argument("--kind", dest="source_kind", choices=SOURCE_KINDS, required=True)
+    register.add_argument(
+        "--kind", dest="source_kind", choices=SOURCE_KINDS, required=True
+    )
     register.add_argument("--provider")
     register.add_argument("--domain", required=True)
     register.add_argument("--dataset", required=True)
@@ -713,7 +1017,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     enqueue = sub.add_parser("enqueue", help="Create a metadata-only intake request")
     enqueue.add_argument("--source", dest="source_key", required=True)
-    enqueue.add_argument("--input-ref", required=True, help="Opaque reference only; never raw content or a filesystem path")
+    enqueue.add_argument(
+        "--input-ref",
+        required=True,
+        help="Opaque reference only; never raw content or a filesystem path",
+    )
     enqueue.add_argument("--idempotency-key", required=True)
     enqueue.add_argument("--intake-key")
     enqueue.add_argument("--source-batch-ref")
@@ -723,7 +1031,9 @@ def build_parser() -> argparse.ArgumentParser:
     enqueue.add_argument("--payload-kind", choices=PAYLOAD_KINDS, required=True)
     enqueue.add_argument("--privacy-class", choices=PRIVACY_CLASSES)
     enqueue.add_argument("--retention-class")
-    enqueue.add_argument("--requested-by", choices=("human", "agent", "automation"), default="human")
+    enqueue.add_argument(
+        "--requested-by", choices=("human", "agent", "automation"), default="human"
+    )
     add_json_flag(enqueue)
 
     queue = sub.add_parser("queue", help="List queued intake metadata")
@@ -733,7 +1043,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     show = sub.add_parser("show", help="Show one privacy-safe intake record")
     show.add_argument("intake")
-    repair = sub.add_parser("repair", help="Record lost transition events of one intake")
+    repair = sub.add_parser(
+        "repair", help="Record lost transition events of one intake"
+    )
     repair.add_argument("intake")
     add_json_flag(repair)
     add_json_flag(show)
@@ -753,7 +1065,9 @@ def build_parser() -> argparse.ArgumentParser:
     renew.add_argument("--lease-minutes", type=int, default=30)
     add_json_flag(renew)
 
-    land = sub.add_parser("land", help="Attach completed lake lineage to a processing intake")
+    land = sub.add_parser(
+        "land", help="Attach completed lake lineage to a processing intake"
+    )
     land.add_argument("intake")
     land.add_argument("--lake-run-id", required=True)
     land.add_argument("--manifest-key", required=True)
@@ -761,11 +1075,15 @@ def build_parser() -> argparse.ArgumentParser:
     land.add_argument("--bronze-key", required=True)
     land.add_argument("--raw-sha256", required=True)
     land.add_argument("--record-count", type=int, required=True)
-    land.add_argument("--worker", required=True, help="Expected lease owner; fences stale workers")
+    land.add_argument(
+        "--worker", required=True, help="Expected lease owner; fences stale workers"
+    )
     land.add_argument("--actor", default="lake-worker")
     add_json_flag(land)
 
-    verify = sub.add_parser("verify", help="Verify the immutable lake manifest and close the intake")
+    verify = sub.add_parser(
+        "verify", help="Verify the immutable lake manifest and close the intake"
+    )
     verify.add_argument("intake")
     verify.add_argument("--data-lake-uri", default=DEFAULT_LAKE_URI)
     verify.add_argument("--actor", default="lake-verifier")
@@ -775,7 +1093,9 @@ def build_parser() -> argparse.ArgumentParser:
     fail.add_argument("intake")
     fail.add_argument("--error-code", required=True)
     fail.add_argument("--error-message", required=True)
-    fail.add_argument("--worker", required=True, help="Expected lease owner; fences stale workers")
+    fail.add_argument(
+        "--worker", required=True, help="Expected lease owner; fences stale workers"
+    )
     fail.add_argument("--actor", default="lake-worker")
     add_json_flag(fail)
 
@@ -835,7 +1155,9 @@ def main() -> int:
     except (ValueError, RuntimeError, ClientConfigError, StorageError) as exc:
         message = str(exc)
         if isinstance(exc, CellStoreError) and exc.status == 409:
-            message = "database constraint conflict; check unique keys and source status"
+            message = (
+                "database constraint conflict; check unique keys and source status"
+            )
         print(f"ERROR: {message}", file=sys.stderr)
         return 2
     return 0

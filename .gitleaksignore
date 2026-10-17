@@ -1,0 +1,3 @@
+# Reviewed false positive (generic-api-key): "fixture-privacy-001" is the --idempotency-key of a
+# synthetic test request in the offline data-intake test, not a credential.
+3d97094b6e5a01ad4966e5cbf7e44bd8d7ec3250:infra/tests/integrations/data_intake_test.py:generic-api-key:80
