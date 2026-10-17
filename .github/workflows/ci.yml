@@ -1,0 +1,27 @@
+# CI + security baseline (DevSecOps Phase 1). Public repository: GitHub-hosted runners.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  event-hub:
+    uses: bookchaowalit/platform-ci-workflows/.github/workflows/ci-python.yml@c37ef9d113eefb3ed45429717cb7ca201192c3fc # v1.0.1
+    with:
+      python-version: "3.11" # matches the python:3.11-slim image (infra/event-hub/Dockerfile)
+      # The offline suites are standalone scripts (data_intake_test.py is not a unittest module);
+      # event_hub_live_test.py needs the compose stack and stays manual.
+      test-command: python infra/tests/integrations/event_hub_test.py && python infra/tests/integrations/data_intake_test.py
+
+  security:
+    uses: bookchaowalit/platform-ci-workflows/.github/workflows/security.yml@c37ef9d113eefb3ed45429717cb7ca201192c3fc # v1.0.1
