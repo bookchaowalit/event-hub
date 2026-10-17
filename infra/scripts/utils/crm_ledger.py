@@ -28,13 +28,21 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from task_store import ClientConfigError, _NoRedirect, client_config_path, read_client_file, validate_api_url
+from task_store import (
+    ClientConfigError,
+    _NoRedirect,
+    client_config_path,
+    read_client_file,
+    validate_api_url,
+)
 
 URL_KEY = "EMPIRE_CRM_LEDGER_API"
 TOKEN_KEY = "EMPIRE_CRM_LEDGER_TOKEN"
 TOKEN_FILE = Path.home() / ".config" / "solo-crm" / "income.token"
 MAX_LIMIT = 500
-TOKEN_SHAPE = re.compile(r"^[A-Za-z0-9._~+/=-]{16,512}$")  # the ledger API's page cap; totals always cover every matching row
+TOKEN_SHAPE = re.compile(
+    r"^[A-Za-z0-9._~+/=-]{16,512}$"
+)  # the ledger API's page cap; totals always cover every matching row
 
 
 class LedgerError(RuntimeError):
@@ -54,13 +62,20 @@ class CrmLedger:
     def __repr__(self) -> str:
         return f"CrmLedger({self.base_url!r})"
 
-    def _call(self, method: str, path: str, body: Any = None, params: dict | None = None) -> Any:
+    def _call(
+        self, method: str, path: str, body: Any = None, params: dict | None = None
+    ) -> Any:
         clean = {k: v for k, v in (params or {}).items() if v is not None}
         query = f"?{urllib.parse.urlencode(clean)}" if clean else ""
         request = urllib.request.Request(
-            f"{self.base_url}/api/v1/crm/ledger{path}{query}", method=method,
+            f"{self.base_url}/api/v1/crm/ledger{path}{query}",
+            method=method,
             data=json.dumps(body).encode() if body is not None else None,
-            headers={"Authorization": f"Bearer {self.token}", "Content-Type": "application/json"})
+            headers={
+                "Authorization": f"Bearer {self.token}",
+                "Content-Type": "application/json",
+            },
+        )
         try:
             with self._opener.open(request, timeout=self.timeout) as response:
                 return json.loads(response.read() or b"null")
@@ -73,34 +88,73 @@ class CrmLedger:
             except Exception:  # noqa: BLE001 - any failure here keeps the generic reason
                 pass
             raise LedgerError(error.code, reason) from None
-        except (urllib.error.URLError, OSError, http.client.HTTPException, ValueError) as error:
+        except (
+            urllib.error.URLError,
+            OSError,
+            http.client.HTTPException,
+            ValueError,
+        ) as error:
             # Never chain or echo the error: a malformed header error can carry the Authorization value.
             raise LedgerError(503, f"unavailable:{type(error).__name__}") from None
 
-    def revenue(self, *, since: str | None = None, until: str | None = None, source_type: str | None = None,
-                client_id: int | None = None, received: bool | None = None, limit: int = 500
-                ) -> tuple[list[dict[str, Any]], dict[str, float]]:
+    def revenue(
+        self,
+        *,
+        since: str | None = None,
+        until: str | None = None,
+        source_type: str | None = None,
+        client_id: int | None = None,
+        received: bool | None = None,
+        limit: int = 500,
+    ) -> tuple[list[dict[str, Any]], dict[str, float]]:
         """(rows newest first, totals per currency) for the filters."""
-        out = self._call("GET", "/revenue", params={
-            "since": since, "until": until, "source_type": source_type, "client_id": client_id, "limit": limit,
-            "received": None if received is None else str(bool(received)).lower()} | {"limit": min(limit, MAX_LIMIT)})
+        out = self._call(
+            "GET",
+            "/revenue",
+            params={
+                "since": since,
+                "until": until,
+                "source_type": source_type,
+                "client_id": client_id,
+                "limit": limit,
+                "received": None if received is None else str(bool(received)).lower(),
+            }
+            | {"limit": min(limit, MAX_LIMIT)},
+        )
         return out["items"], out["totals"]
 
     def add_revenue(self, fields: dict[str, Any]) -> tuple[str, dict[str, Any]]:
         out = self._call("POST", "/revenue", fields)
         return out["outcome"], out["revenue"]
 
-    def revenue_all(self, *, since: str | None = None, until: str | None = None, source_type: str | None = None,
-                    client_id: int | None = None, received: bool | None = None
-                    ) -> tuple[list[dict[str, Any]], dict[str, float]]:
+    def revenue_all(
+        self,
+        *,
+        since: str | None = None,
+        until: str | None = None,
+        source_type: str | None = None,
+        client_id: int | None = None,
+        received: bool | None = None,
+    ) -> tuple[list[dict[str, Any]], dict[str, float]]:
         """Every matching row (all pages, newest first) and the totals per currency."""
         rows: list[dict[str, Any]] = []
         totals: dict[str, float] = {}
         while True:
-            out = self._call("GET", "/revenue", params={
-                "since": since, "until": until, "source_type": source_type, "client_id": client_id,
-                "received": None if received is None else str(bool(received)).lower(),
-                "limit": MAX_LIMIT, "offset": len(rows)})
+            out = self._call(
+                "GET",
+                "/revenue",
+                params={
+                    "since": since,
+                    "until": until,
+                    "source_type": source_type,
+                    "client_id": client_id,
+                    "received": None
+                    if received is None
+                    else str(bool(received)).lower(),
+                    "limit": MAX_LIMIT,
+                    "offset": len(rows),
+                },
+            )
             rows.extend(out["items"])
             totals = out["totals"]
             if len(out["items"]) < MAX_LIMIT:
@@ -109,10 +163,22 @@ class CrmLedger:
     def update_revenue(self, record_id: int, fields: dict[str, Any]) -> dict[str, Any]:
         return self._call("PATCH", f"/revenue/{int(record_id)}", fields)["revenue"]
 
-    def invoices(self, *, status: str | None = None, client_id: int | None = None, limit: int = 500
-                 ) -> list[dict[str, Any]]:
-        return self._call("GET", "/invoices", params={"status": status, "client_id": client_id,
-                                                       "limit": min(limit, MAX_LIMIT)})["items"]
+    def invoices(
+        self,
+        *,
+        status: str | None = None,
+        client_id: int | None = None,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]:
+        return self._call(
+            "GET",
+            "/invoices",
+            params={
+                "status": status,
+                "client_id": client_id,
+                "limit": min(limit, MAX_LIMIT),
+            },
+        )["items"]
 
     def add_invoice(self, fields: dict[str, Any]) -> tuple[str, dict[str, Any]]:
         out = self._call("POST", "/invoices", fields)
@@ -121,8 +187,14 @@ class CrmLedger:
     def update_invoice(self, record_id: int, fields: dict[str, Any]) -> dict[str, Any]:
         return self._call("PATCH", f"/invoices/{int(record_id)}", fields)["invoice"]
 
-    def clients(self, *, status: str | None = None, q: str | None = None, limit: int = 500) -> list[dict[str, Any]]:
-        return self._call("GET", "/clients", params={"status": status, "q": q, "limit": min(limit, MAX_LIMIT)})["items"]
+    def clients(
+        self, *, status: str | None = None, q: str | None = None, limit: int = 500
+    ) -> list[dict[str, Any]]:
+        return self._call(
+            "GET",
+            "/clients",
+            params={"status": status, "q": q, "limit": min(limit, MAX_LIMIT)},
+        )["items"]
 
     def add_client(self, fields: dict[str, Any]) -> tuple[str, dict[str, Any]]:
         out = self._call("POST", "/clients", fields)
@@ -131,9 +203,13 @@ class CrmLedger:
 
 def ledger_url(environ: Any = None) -> str:
     environ = os.environ if environ is None else environ
-    value = (environ.get(URL_KEY) or "").strip() or read_client_file(client_config_path(environ)).get(URL_KEY, "")
+    value = (environ.get(URL_KEY) or "").strip() or read_client_file(
+        client_config_path(environ)
+    ).get(URL_KEY, "")
     if not value:
-        raise ClientConfigError(f"the CRM ledger is not configured: set {URL_KEY} (env or client.env)")
+        raise ClientConfigError(
+            f"the CRM ledger is not configured: set {URL_KEY} (env or client.env)"
+        )
     return validate_api_url(value)
 
 
@@ -143,12 +219,18 @@ def ledger_token(environ: Any = None) -> str:
         token = environ[TOKEN_KEY].strip()
     elif TOKEN_FILE.is_file():
         if TOKEN_FILE.stat().st_mode & 0o077:
-            raise ClientConfigError(f"{TOKEN_FILE} must be readable by its owner only (chmod 600)")
+            raise ClientConfigError(
+                f"{TOKEN_FILE} must be readable by its owner only (chmod 600)"
+            )
         token = TOKEN_FILE.read_text(encoding="utf-8").strip()
     else:
-        raise ClientConfigError(f"no CRM ledger token: set {TOKEN_KEY} or create {TOKEN_FILE}")
+        raise ClientConfigError(
+            f"no CRM ledger token: set {TOKEN_KEY} or create {TOKEN_FILE}"
+        )
     if not TOKEN_SHAPE.fullmatch(token):
-        raise ClientConfigError("the CRM ledger token has an unexpected format")  # never echo it
+        raise ClientConfigError(
+            "the CRM ledger token has an unexpected format"
+        )  # never echo it
     return token
 
 

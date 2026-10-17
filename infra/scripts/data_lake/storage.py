@@ -142,7 +142,9 @@ class ObjectStore:
 
     def _aws_args(self) -> list[str]:
         args: list[str] = []
-        endpoint = os.environ.get("DATA_LAKE_S3_ENDPOINT") or os.environ.get("AWS_ENDPOINT_URL")
+        endpoint = os.environ.get("DATA_LAKE_S3_ENDPOINT") or os.environ.get(
+            "AWS_ENDPOINT_URL"
+        )
         region = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION")
         if endpoint:
             args.extend(["--endpoint-url", endpoint])
@@ -150,7 +152,9 @@ class ObjectStore:
             args.extend(["--region", region])
         return args
 
-    def _run_aws(self, args: list[str], *, input_bytes: bytes | None = None) -> subprocess.CompletedProcess:
+    def _run_aws(
+        self, args: list[str], *, input_bytes: bytes | None = None
+    ) -> subprocess.CompletedProcess:
         try:
             return subprocess.run(
                 ["aws", *args],
@@ -165,7 +169,9 @@ class ObjectStore:
                 "use file:// for local development"
             ) from exc
 
-    def put_bytes(self, key: str, data: bytes, *, content_type: str | None = None) -> PutResult:
+    def put_bytes(
+        self, key: str, data: bytes, *, content_type: str | None = None
+    ) -> PutResult:
         """Write an object once; an identical retry is a no-op."""
         key = _safe_key(key)
         digest = hashlib.sha256(data).hexdigest()
@@ -178,7 +184,9 @@ class ObjectStore:
                 if existing != digest:
                     raise StorageConflict(f"Immutable object conflict at {key}")
                 return PutResult(key=key, existed=True, sha256=digest)
-            with tempfile.NamedTemporaryFile(dir=destination.parent, delete=False) as handle:
+            with tempfile.NamedTemporaryFile(
+                dir=destination.parent, delete=False
+            ) as handle:
                 temporary = Path(handle.name)
                 handle.write(data)
                 handle.flush()
@@ -223,10 +231,17 @@ class ObjectStore:
                     f"({len(data)} > {max_bytes})"
                 )
         full_key = self._full_key(key)
-        head = self._run_aws([
-            "s3api", "head-object", "--bucket", self.bucket, "--key", full_key,
-            *self._aws_args(),
-        ])
+        head = self._run_aws(
+            [
+                "s3api",
+                "head-object",
+                "--bucket",
+                self.bucket,
+                "--key",
+                full_key,
+                *self._aws_args(),
+            ]
+        )
         if head.returncode == 0:
             # Custom metadata is written with every upload.  Older objects may
             # not have it, so fall back to a byte-for-byte read rather than
@@ -234,7 +249,9 @@ class ObjectStore:
             try:
                 payload = json.loads(head.stdout.decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-                raise StorageError(f"Object metadata returned invalid JSON for {key}") from exc
+                raise StorageError(
+                    f"Object metadata returned invalid JSON for {key}"
+                ) from exc
             metadata = payload.get("Metadata") if isinstance(payload, dict) else None
             stored_digest = None
             if isinstance(metadata, dict):
@@ -256,7 +273,9 @@ class ObjectStore:
                 raise StorageConflict(f"Immutable object conflict at {key}")
             return PutResult(key=key, existed=True, sha256=digest)
         head_error = head.stderr.decode("utf-8", errors="replace").lower()
-        if not any(marker in head_error for marker in ("nosuchkey", "not found", "404")):
+        if not any(
+            marker in head_error for marker in ("nosuchkey", "not found", "404")
+        ):
             # A permission, endpoint, or transient provider failure must not be
             # mistaken for absence and followed by an unsafe overwrite.
             raise StorageError(f"Object metadata lookup failed for {key}")
@@ -265,14 +284,25 @@ class ObjectStore:
         # new immutable key cannot overwrite one another.  A temporary file is
         # used because ``put-object --body`` accepts a path consistently across
         # AWS CLI and S3-compatible endpoints.
-        with tempfile.NamedTemporaryFile(prefix="solo-empire-upload-", delete=False) as handle:
+        with tempfile.NamedTemporaryFile(
+            prefix="solo-empire-upload-", delete=False
+        ) as handle:
             temporary = Path(handle.name)
             handle.write(data)
             handle.flush()
             os.fsync(handle.fileno())
         command = [
-            "s3api", "put-object", "--bucket", self.bucket, "--key", full_key,
-            "--body", str(temporary), "--if-none-match", "*", *self._aws_args(),
+            "s3api",
+            "put-object",
+            "--bucket",
+            self.bucket,
+            "--key",
+            full_key,
+            "--body",
+            str(temporary),
+            "--if-none-match",
+            "*",
+            *self._aws_args(),
         ]
         if content_type:
             command.extend(["--content-type", content_type])
@@ -286,7 +316,10 @@ class ObjectStore:
                 pass
         if uploaded.returncode != 0:
             error = uploaded.stderr.decode("utf-8", errors="replace").lower()
-            if any(marker in error for marker in ("precondition", "if-none-match", "412", "conditional")):
+            if any(
+                marker in error
+                for marker in ("precondition", "if-none-match", "412", "conditional")
+            ):
                 raise StorageConflict(f"Immutable object conflict at {key}")
             raise StorageError(
                 f"Object upload failed for {key}; AWS CLI exit={uploaded.returncode}"
@@ -305,13 +338,22 @@ class ObjectStore:
 
         assert self.bucket is not None
         full_key = self._full_key(key)
-        result = self._run_aws([
-            "s3", "cp", f"s3://{self.bucket}/{full_key}", "-",
-            *self._aws_args(), "--only-show-errors",
-        ])
+        result = self._run_aws(
+            [
+                "s3",
+                "cp",
+                f"s3://{self.bucket}/{full_key}",
+                "-",
+                *self._aws_args(),
+                "--only-show-errors",
+            ]
+        )
         if result.returncode != 0:
             error = result.stderr.decode("utf-8", errors="replace").lower()
-            if any(marker in error for marker in ("nosuchkey", "not found", "404", "nosuchbucket")):
+            if any(
+                marker in error
+                for marker in ("nosuchkey", "not found", "404", "nosuchbucket")
+            ):
                 raise ObjectNotFound(f"Object not found: {key}")
             raise StorageError(f"Object download failed for {key}")
         return result.stdout
@@ -383,17 +425,29 @@ class ObjectStore:
                 raise StorageError(f"Object not found: {key}") from exc
 
         assert self.bucket is not None
-        result = self._run_aws([
-            "s3api", "head-object", "--bucket", self.bucket,
-            "--key", self._full_key(key), "--query", "ContentLength",
-            "--output", "text", *self._aws_args(),
-        ])
+        result = self._run_aws(
+            [
+                "s3api",
+                "head-object",
+                "--bucket",
+                self.bucket,
+                "--key",
+                self._full_key(key),
+                "--query",
+                "ContentLength",
+                "--output",
+                "text",
+                *self._aws_args(),
+            ]
+        )
         if result.returncode != 0:
             raise StorageError(f"Object metadata lookup failed for {key}")
         try:
             return int(result.stdout.decode("utf-8").strip())
         except (TypeError, ValueError) as exc:
-            raise StorageError(f"Object metadata returned invalid size for {key}") from exc
+            raise StorageError(
+                f"Object metadata returned invalid size for {key}"
+            ) from exc
 
     def describe(self) -> str:
         if self.scheme == "file":

@@ -30,7 +30,9 @@ import sqlite_decision_store  # noqa: E402  (also isolates the decisions API cli
 
 
 def _decision_opener(*_args, **_kwargs):
-    return sqlite_decision_store.SqliteDecisionStore(sqlite3.connect(os.environ["SOLO_EMPIRE_DB_PATH"]))
+    return sqlite_decision_store.SqliteDecisionStore(
+        sqlite3.connect(os.environ["SOLO_EMPIRE_DB_PATH"])
+    )
 
 
 decision_store.open_decision_store = _decision_opener
@@ -41,7 +43,9 @@ import sqlite_habits_store  # noqa: E402  (also isolates the habits API client s
 
 
 def _habits_opener(*_args, **_kwargs):
-    return sqlite_habits_store.SqliteHabitsStore(sqlite3.connect(os.environ["SOLO_EMPIRE_DB_PATH"]))
+    return sqlite_habits_store.SqliteHabitsStore(
+        sqlite3.connect(os.environ["SOLO_EMPIRE_DB_PATH"])
+    )
 
 
 habits_store.open_habits_store = _habits_opener
@@ -52,7 +56,9 @@ import sqlite_notifications_store  # noqa: E402  (also isolates the notification
 
 
 def _notifications_opener(*_args, **_kwargs):
-    return sqlite_notifications_store.SqliteNotificationsStore(sqlite3.connect(os.environ["SOLO_EMPIRE_DB_PATH"]))
+    return sqlite_notifications_store.SqliteNotificationsStore(
+        sqlite3.connect(os.environ["SOLO_EMPIRE_DB_PATH"])
+    )
 
 
 notifications_store.open_notifications_store = _notifications_opener
@@ -61,8 +67,13 @@ notifications_store.open_notifications_store = _notifications_opener
 import cell_store  # noqa: E402
 import sqlite_cell_store  # noqa: E402  (also isolates the cell API client switches)
 
-cell_store.open_cell_store = sqlite_cell_store.sqlite_cell_opener(sqlite3.connect(os.environ["SOLO_EMPIRE_DB_PATH"])) \
-    if os.environ.get("SOLO_EMPIRE_DB_PATH") else cell_store.open_cell_store
+cell_store.open_cell_store = (
+    sqlite_cell_store.sqlite_cell_opener(
+        sqlite3.connect(os.environ["SOLO_EMPIRE_DB_PATH"])
+    )
+    if os.environ.get("SOLO_EMPIRE_DB_PATH")
+    else cell_store.open_cell_store
+)
 
 
 # The CRM ledger (revenue, invoices, clients): the SQLite double over the same test database.
@@ -71,4 +82,5 @@ import sqlite_crm_ledger  # noqa: E402  (also isolates the ledger client switch)
 
 if os.environ.get("SOLO_EMPIRE_DB_PATH"):
     crm_ledger.open_crm_ledger = sqlite_crm_ledger.sqlite_ledger_opener(
-        sqlite3.connect(os.environ["SOLO_EMPIRE_DB_PATH"]))
+        sqlite3.connect(os.environ["SOLO_EMPIRE_DB_PATH"])
+    )

@@ -18,8 +18,14 @@ from pathlib import Path
 from typing import Any
 
 # Safety: a test that imports this double must never reach a live cell API.
-for _key in ("EMPIRE_GOALS_API", "EMPIRE_PROJECTS_API", "EMPIRE_ROLES_SKILLS_API", "EMPIRE_OPERATING_API",
-             "EMPIRE_INTAKE_API", "EMPIRE_AUTOMATION_API"):
+for _key in (
+    "EMPIRE_GOALS_API",
+    "EMPIRE_PROJECTS_API",
+    "EMPIRE_ROLES_SKILLS_API",
+    "EMPIRE_OPERATING_API",
+    "EMPIRE_INTAKE_API",
+    "EMPIRE_AUTOMATION_API",
+):
     os.environ.pop(_key, None)
 os.environ["EMPIRE_CLIENT_CONFIG"] = "/nonexistent/solo-empire-test/client.env"
 
@@ -27,14 +33,22 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts" / "utils"
 from cell_store import CellStoreError  # noqa: E402  (the error the production client raises)
 
 LEGACY_DDL = Path(__file__).resolve().parent / "legacy_portfolio_tables.sql"
-LEGACY_DDL_2 = Path(__file__).resolve().parent / "legacy_operating_intake_automation_tables.sql"
+LEGACY_DDL_2 = (
+    Path(__file__).resolve().parent / "legacy_operating_intake_automation_tables.sql"
+)
 
 # plural -> (cell, legacy table, id column, order column, bool columns)
 RESOURCES: dict[str, tuple[str, str, str, str, tuple[str, ...]]] = {
     "goals": ("goals", "goals", "id", "id", ()),
     "goal-tasks": ("goals", "goal_tasks", "id", "sort_order", ()),
     "goal-metrics": ("goals", "goal_metrics", "id", "id", ()),
-    "goal-portfolio-mappings": ("goals", "goal_portfolio_mappings", "goal_id", "goal_id", ()),
+    "goal-portfolio-mappings": (
+        "goals",
+        "goal_portfolio_mappings",
+        "goal_id",
+        "goal_id",
+        (),
+    ),
     "productivity-goals": ("goals", "productivity_goals", "id", "id", ("is_active",)),
     "goal-project-links": ("goals", "goal_project_links", "id", "id", ()),
     "goal-context-links": ("goals", "goal_context_links", "id", "id", ()),
@@ -45,21 +59,63 @@ RESOURCES: dict[str, tuple[str, str, str, str, tuple[str, ...]]] = {
     "project-context-links": ("projects", "project_context_links", "id", "id", ()),
     "work-items": ("projects", "portfolio_work_items", "id", "id", ()),
     "work-item-task-links": ("projects", "work_item_task_links", "id", "id", ()),
-    "work-item-goal-task-links": ("projects", "work_item_goal_task_links", "id", "id", ()),
+    "work-item-goal-task-links": (
+        "projects",
+        "work_item_goal_task_links",
+        "id",
+        "id",
+        (),
+    ),
     "personal-roles": ("roles-skills", "personal_roles", "id", "id", ()),
-    "personal-role-context-links": ("roles-skills", "personal_role_context_links", "id", "id", ()),
-    "personal-role-goal-links": ("roles-skills", "personal_role_goal_links", "id", "id", ()),
-    "personal-role-project-links": ("roles-skills", "personal_role_project_links", "id", "id", ()),
-    "personal-role-task-links": ("roles-skills", "personal_role_task_links", "id", "id", ()),
+    "personal-role-context-links": (
+        "roles-skills",
+        "personal_role_context_links",
+        "id",
+        "id",
+        (),
+    ),
+    "personal-role-goal-links": (
+        "roles-skills",
+        "personal_role_goal_links",
+        "id",
+        "id",
+        (),
+    ),
+    "personal-role-project-links": (
+        "roles-skills",
+        "personal_role_project_links",
+        "id",
+        "id",
+        (),
+    ),
+    "personal-role-task-links": (
+        "roles-skills",
+        "personal_role_task_links",
+        "id",
+        "id",
+        (),
+    ),
     "role-goal-links": ("roles-skills", "role_goal_links", "id", "id", ()),
     "skill-categories": ("roles-skills", "skill_categories", "id", "sort_order", ()),
     "skills": ("roles-skills", "skills", "id", "id", ("revenue_relevant",)),
     "progress-log": ("roles-skills", "progress_log", "id", "id", ()),
     "role-path-steps": ("roles-skills", "role_path_steps", "id", "id", ()),
-    "role-project-allocations": ("roles-skills", "role_project_allocations", "id", "id", ()),
+    "role-project-allocations": (
+        "roles-skills",
+        "role_project_allocations",
+        "id",
+        "id",
+        (),
+    ),
     "role-skill-links": ("roles-skills", "role_skill_links", "id", "id", ()),
     "cycles": ("operating", "operating_cycles", "id", "start_date", ()),
-    "cycle-tasks": ("operating", "operating_cycle_tasks", "id", "id", ("evidence_required",)),
+    "cycle-tasks": (
+        "operating",
+        "operating_cycle_tasks",
+        "id",
+        "id",
+        ("evidence_required",),
+    ),
     "cycle-goal-links": ("operating", "operating_cycle_goal_links", "id", "id", ()),
     "cycle-reviews": ("operating", "operating_cycle_reviews", "id", "id", ()),
     "kpis": ("operating", "operating_kpi_definitions", "id", "id", ()),
@@ -69,7 +125,13 @@ RESOURCES: dict[str, tuple[str, str, str, str, tuple[str, ...]]] = {
     "intake-events": ("intake", "intake_events", "id", "id", ()),
     "cron-jobs": ("automation", "cron_jobs", "id", "id", ("is_active",)),
     "automation-rules": ("automation", "automation_rules", "id", "id", ("is_active",)),
-    "workflow-pipelines": ("automation", "workflow_pipelines", "id", "id", ("is_active",)),
+    "workflow-pipelines": (
+        "automation",
+        "workflow_pipelines",
+        "id",
+        "id",
+        ("is_active",),
+    ),
     "automation-log": ("automation", "automation_log", "id", "id", ("success",)),
 }
 
@@ -79,7 +141,11 @@ def apply_legacy_portfolio_tables(conn: sqlite3.Connection) -> None:
 
     An index on a column such a minimal table lacks is skipped; any other DDL error is raised.
     """
-    script = LEGACY_DDL.read_text(encoding="utf-8") + "\n" + LEGACY_DDL_2.read_text(encoding="utf-8")
+    script = (
+        LEGACY_DDL.read_text(encoding="utf-8")
+        + "\n"
+        + LEGACY_DDL_2.read_text(encoding="utf-8")
+    )
     statement = ""
     for line in script.splitlines(keepends=True):
         statement += line
@@ -88,8 +154,11 @@ def apply_legacy_portfolio_tables(conn: sqlite3.Connection) -> None:
         try:
             conn.execute(statement)
         except sqlite3.OperationalError as exc:
-            if not (statement.lstrip().upper().startswith("CREATE") and "INDEX" in statement.upper()
-                    and "no such column" in str(exc)):
+            if not (
+                statement.lstrip().upper().startswith("CREATE")
+                and "INDEX" in statement.upper()
+                and "no such column" in str(exc)
+            ):
                 raise
         statement = ""
 
@@ -104,7 +173,9 @@ class SqliteCellStore:
     def __init__(self, conn: sqlite3.Connection, cell: str) -> None:
         self.cell = cell
         self.conn = conn
-        self._versions: dict[tuple[str, int], int] = {}  # the cells' row version, which the old tables lack
+        self._versions: dict[
+            tuple[str, int], int
+        ] = {}  # the cells' row version, which the old tables lack
         self._keys: dict[tuple[str, str], int] = {}  # idempotency keys -> created id
         self.conn.row_factory = sqlite3.Row
         apply_legacy_portfolio_tables(self.conn)  # schema.sql no longer has them
@@ -118,20 +189,30 @@ class SqliteCellStore:
     def _columns(self, table: str) -> set[str]:
         return {r[1] for r in self.conn.execute(f"PRAGMA table_info({table})")}
 
-    def _out(self, row: sqlite3.Row | None, key: str, bools: tuple[str, ...], table: str = "") -> dict[str, Any] | None:
+    def _out(
+        self, row: sqlite3.Row | None, key: str, bools: tuple[str, ...], table: str = ""
+    ) -> dict[str, Any] | None:
         if row is None:
             return None
         data = dict(row)
         data.setdefault("id", data[key])
         data["legacy_id"] = data[key]
-        data["version"] = data.get("version") or self._versions.get((table, int(data[key])), 1)
+        data["version"] = data.get("version") or self._versions.get(
+            (table, int(data[key])), 1
+        )
         for name in bools:
             if name in data and data[name] is not None:
                 data[name] = bool(data[name])
         return data
 
-    def list(self, plural: str, *, order: str = "asc", limit: int | None = None, **filters: Any
-             ) -> list[dict[str, Any]]:
+    def list(
+        self,
+        plural: str,
+        *,
+        order: str = "asc",
+        limit: int | None = None,
+        **filters: Any,
+    ) -> list[dict[str, Any]]:
         table, key, order_column, bools = self._resource(plural)
         columns = self._columns(table)
         where, params = ["1=1"], []
@@ -149,7 +230,11 @@ class SqliteCellStore:
         for name in [nulls] if isinstance(nulls, str) else nulls:
             where.append(f"{name} IS NULL")
         direction = "DESC" if order == "desc" else "ASC"
-        sort = f"{order_column} {direction}, {key} {direction}" if order_column != key else f"{key} {direction}"
+        sort = (
+            f"{order_column} {direction}, {key} {direction}"
+            if order_column != key
+            else f"{key} {direction}"
+        )
         sql = f"SELECT * FROM {table} WHERE {' AND '.join(where)} ORDER BY {sort}"
         if limit:
             sql += f" LIMIT {int(limit)}"
@@ -157,31 +242,54 @@ class SqliteCellStore:
 
     def get(self, plural: str, record_id: int) -> dict[str, Any] | None:
         table, key, _, bools = self._resource(plural)
-        return self._out(self.conn.execute(f"SELECT * FROM {table} WHERE {key} = ?", (int(record_id),)).fetchone(),
-                         key, bools, table)
+        return self._out(
+            self.conn.execute(
+                f"SELECT * FROM {table} WHERE {key} = ?", (int(record_id),)
+            ).fetchone(),
+            key,
+            bools,
+            table,
+        )
 
-    def create(self, plural: str, fields: dict[str, Any], *, idempotency_key: str | None = None) -> dict[str, Any]:
+    def create(
+        self, plural: str, fields: dict[str, Any], *, idempotency_key: str | None = None
+    ) -> dict[str, Any]:
         table, key, _, bools = self._resource(plural)
-        if idempotency_key and (plural, idempotency_key) in self._keys:  # a replay returns the first result
+        if (
+            idempotency_key and (plural, idempotency_key) in self._keys
+        ):  # a replay returns the first result
             return self.get(plural, self._keys[(plural, idempotency_key)])
         columns = self._columns(table)
-        data = {k: (int(v) if isinstance(v, bool) else v) for k, v in fields.items()
-                if k in columns and v is not None}
+        data = {
+            k: (int(v) if isinstance(v, bool) else v)
+            for k, v in fields.items()
+            if k in columns and v is not None
+        }
         if "legacy_id" in fields and fields["legacy_id"] is not None:
             data[key] = fields["legacy_id"]
         try:
-            cursor = self.conn.execute(f"INSERT INTO {table} ({', '.join(data)}) VALUES ({', '.join('?' * len(data))})",
-                                       list(data.values()))
+            cursor = self.conn.execute(
+                f"INSERT INTO {table} ({', '.join(data)}) VALUES ({', '.join('?' * len(data))})",
+                list(data.values()),
+            )
         except sqlite3.IntegrityError as exc:
-            raise CellStoreError(409 if "UNIQUE" in str(exc) else 422, "conflict", self.cell) from None
+            raise CellStoreError(
+                409 if "UNIQUE" in str(exc) else 422, "conflict", self.cell
+            ) from None
         self.conn.commit()
         new_id = data.get(key, cursor.lastrowid)
         if idempotency_key:
             self._keys[(plural, idempotency_key)] = int(new_id)
         return self.get(plural, new_id)
 
-    def update(self, plural: str, record_id: int, fields: dict[str, Any], *,
-               expected_version: int | None = None) -> dict[str, Any]:
+    def update(
+        self,
+        plural: str,
+        record_id: int,
+        fields: dict[str, Any],
+        *,
+        expected_version: int | None = None,
+    ) -> dict[str, Any]:
         table, key, _, _ = self._resource(plural)
         before = self.get(plural, record_id)
         if before is None:
@@ -189,18 +297,30 @@ class SqliteCellStore:
         if expected_version is not None and before["version"] != expected_version:
             raise CellStoreError(409, "version_conflict", self.cell)
         columns = self._columns(table)
-        data = {k: (int(v) if isinstance(v, bool) else v) for k, v in fields.items() if k in columns and k != key}
+        data = {
+            k: (int(v) if isinstance(v, bool) else v)
+            for k, v in fields.items()
+            if k in columns and k != key
+        }
         if data:
-            stamp = ", updated_at = ?" if "updated_at" in columns and "updated_at" not in data else ""
-            self.conn.execute(f"UPDATE {table} SET {', '.join(f'{k} = ?' for k in data)}{stamp} WHERE {key} = ?",
-                              [*data.values(), *([_now()] if stamp else []), int(record_id)])
+            stamp = (
+                ", updated_at = ?"
+                if "updated_at" in columns and "updated_at" not in data
+                else ""
+            )
+            self.conn.execute(
+                f"UPDATE {table} SET {', '.join(f'{k} = ?' for k in data)}{stamp} WHERE {key} = ?",
+                [*data.values(), *([_now()] if stamp else []), int(record_id)],
+            )
             self.conn.commit()
             self._versions[(table, int(record_id))] = before["version"] + 1
         return self.get(plural, record_id)
 
     def delete(self, plural: str, record_id: int) -> bool:
         table, key, _, _ = self._resource(plural)
-        cursor = self.conn.execute(f"DELETE FROM {table} WHERE {key} = ?", (int(record_id),))
+        cursor = self.conn.execute(
+            f"DELETE FROM {table} WHERE {key} = ?", (int(record_id),)
+        )
         self.conn.commit()
         return cursor.rowcount > 0
 

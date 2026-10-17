@@ -212,8 +212,7 @@ def register_bronze_file(
             table_location = str(resolved_location)
 
         referenced_files = {
-            str(row["file_path"])
-            for row in table.inspect.data_files().to_pylist()
+            str(row["file_path"]) for row in table.inspect.data_files().to_pylist()
         }
         equivalent_locations = {file_location, file_uri}
         if referenced_files.intersection(equivalent_locations):
